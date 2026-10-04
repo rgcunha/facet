@@ -19,7 +19,7 @@ export async function generateMetadata({
   params,
 }: PageProps<"/cv/[id]/print">): Promise<Metadata> {
   const { cv, contact } = await load((await params).id);
-  return { title: exportFileName(contact.name, cv.title) };
+  return { title: exportFileName(contact.name, cv.job?.company || cv.title) };
 }
 
 /** Print-only view: the browser's "Save as PDF" turns this into the exported file. */

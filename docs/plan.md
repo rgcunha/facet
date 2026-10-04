@@ -7,7 +7,10 @@
   - The `/simplify` and `/code-review` findings are fixed. The 6 review findings were: date ranges masked as phones; contact filled from rejected values; drop-zone re-pick and double drop; duplicate custom mask; fit status unmeasured behind the Original tab; abandoned imports left on disk.
   - `bun run check` passes, and `bun test` passes 24 tests.
   - Both browser flows pass, and the fake model received 0 of 7 personal values.
-- **Next: Phase 3 (tailoring).**
+- **Phase 3 (tailoring):** done.
+  - `/simplify` and `/code-review` are applied. The 4 review findings were: tighten could lose edits made during the call; translated facts were flagged as fabrications; kept facts were re-flagged; an orphaned variant used itself as its base.
+  - `bun test` passes 35 tests, and all three browser flows pass with no personal data sent to the (fake) model.
+- **Not yet tried:** a real Claude API call (no key on this machine), and the Original PDF tab in a non-headless browser.
 
 ## Context
 
@@ -447,7 +450,7 @@ Four phases: Phase 0 (mockups) is done, and Phases 1–3 are the build. Each bui
 
 **Phase 2: Import.** ✅ Done (2026-10-05). Upload + `unpdf` extraction · detect/redact/vault · Import screen (chips, What's sent, Parse) · LLM adapter + guard + `structureCv` · Original PDF tab · Move to… menu · diagrams updated.
 
-**Phase 3: Tailor.** Tailor panel (paste / fetch, language, length) · `tailorCv` · variant creation with `changes.original` · highlights + Revert · fabrication check · missing keywords · Tighten to fit · diagrams updated.
+**Phase 3: Tailor.** ✅ Done (2026-10-05). Tailor panel (paste / fetch, language, length) · `tailorCv` · variant creation with `changes.original` · highlights + Revert · fabrication check · missing keywords · Tighten to fit · diagrams updated.
 
 **Every phase ends with the Definition of done in `CLAUDE.md`:** `bun run check` + `bun test` pass → `/simplify` → `/code-review` → diagrams up to date → UI tried in the browser.
 

@@ -88,6 +88,16 @@ describe("redact / rehydrate", () => {
     ).toBe("{{NAME}} — {{URL_2}}, {{NAME}}");
   });
 
+  test("masks phone numbers whatever their separators", () => {
+    const phone = toMasks([{ kind: "phone", value: "+351 912 345 678" }]);
+    expect(
+      redact(
+        "call +351 912-345-678 or 00351912345678 or (351) 912.345.678",
+        phone,
+      ),
+    ).toBe("call +{{PHONE}} or 00{{PHONE}} or ({{PHONE}}");
+  });
+
   test("rehydrate restores tokens in nested data", () => {
     const back = rehydrate(
       { projects: [{ link: "{{URL_2}}", tags: ["by {{NAME}}"] }], n: 3 },

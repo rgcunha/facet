@@ -1,4 +1,5 @@
 import {
+  type CvContent,
   cvContentSchema,
   customSectionSchema,
   educationSchema,
@@ -6,6 +7,7 @@ import {
   languageSchema,
   profileSchema,
   projectSchema,
+  type ListSection,
   skillGroupSchema,
 } from "./schema";
 
@@ -18,7 +20,7 @@ export const emptyProfile = () => profileSchema.parse({ v: 1, contact: {} });
 export const emptyContent = () => cvContentSchema.parse({});
 
 /** Blank entries the editor adds via "Add …". A role and a custom section start with one empty line to type into. */
-export const blankItem = {
+export const blankItem: { [K in ListSection]: () => CvContent[K][number] } = {
   experience: () => experienceSchema.parse({ id: shortId(), highlights: [""] }),
   education: () => educationSchema.parse({ id: shortId() }),
   skills: () => skillGroupSchema.parse({ id: shortId() }),

@@ -8,15 +8,20 @@ export const joinFilled = (values: string[], separator = " · ") =>
 export const range = (start: string, end: string) =>
   joinFilled([start, end], " – ");
 
-/** True when an entry has no visible content (its id doesn't count), e.g. one just added and left empty. */
-const isBlank = (entry: object) =>
-  Object.entries(entry).every(
-    ([key, value]) =>
-      key === "id" ||
-      (Array.isArray(value)
-        ? filled(value).length === 0
-        : !String(value).trim()),
+/** For comparing values typed or extracted differently: case and whitespace don't count. */
+export const normalize = (s: string) =>
+  s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Every non-empty text in a list entry (its id excluded), e.g. to show what an entry was. */
+export const entryValues = (entry: object) =>
+  filled(
+    Object.entries(entry).flatMap(([key, value]) =>
+      key === "id" ? [] : ([value].flat() as string[]),
+    ),
   );
+
+/** True when an entry has no visible content, e.g. one just added and left empty. */
+const isBlank = (entry: object) => entryValues(entry).length === 0;
 
 export const visible = <T extends object>(entries: T[]) =>
   entries.filter((entry) => !isBlank(entry));

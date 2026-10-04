@@ -49,7 +49,10 @@ export function useAutosave(form: UseFormReturn<EditorValues>, id: string) {
       clearTimeout(timer.current);
       timer.current = setTimeout(flush, DELAY_MS);
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      clearTimeout(timer.current); // a stale save must not fire after the editor is gone (e.g. remounted)
+    };
   }, [form, flush]);
 
   // Unsaved edits when leaving: in-app navigation saves them; closing or reloading the tab gets the browser's warning.

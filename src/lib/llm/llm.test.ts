@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 import { MockLanguageModelV4 } from "ai/test";
 import type { PrivateValue } from "@/lib/cv/schema";
+import { z } from "zod";
+import { emptyContent } from "@/lib/cv/empty";
+import { generateStructured } from "./generate";
 import { structureCv } from "./structure";
+import { tailorCv } from "./tailor";
 
 const privateValues: PrivateValue[] = [
   { kind: "name", value: "Alex Moreno" },
@@ -43,6 +47,7 @@ function recordingModel(answer: object) {
 
 test("no private value reaches the provider, and placeholders come back as real values", async () => {
   const model = recordingModel({
+    language: "en",
     headline: "Senior Backend Engineer",
     summary: "Backend engineer. {{NAME}} likes Go.",
     experience: [
@@ -62,7 +67,7 @@ test("no private value reaches the provider, and placeholders come back as real 
     extras: [],
   });
 
-  const content = await structureCv(cvText, privateValues, model);
+  const { content } = await structureCv(cvText, privateValues, model);
 
   const sent = JSON.stringify(model.doGenerateCalls);
   for (const { value } of privateValues) expect(sent).not.toContain(value);
@@ -72,15 +77,87 @@ test("no private value reaches the provider, and placeholders come back as real 
   expect(content.experience[0].id).toMatch(/^[0-9a-f]{8}$/);
 });
 
-test("a value the detector missed is still blocked if it is in the vault", async () => {
+test("a reformatted phone number is masked, never sent", async () => {
+  const model = recordingModel({ ...emptyContent(), language: "en" });
+  await structureCv(
+    "Call 00351-912-000-000",
+    [{ kind: "phone", value: "+351 912 000 000" }],
+    model,
+  );
+  const sent = JSON.stringify(model.doGenerateCalls);
+  expect(sent).toContain("{{PHONE}}");
+  expect(sent.replace(/\D/g, "")).not.toContain("351912000000");
+});
+
+test("the guard blocks a private value wherever masking doesn't reach (here: the system prompt)", async () => {
   const model = recordingModel({});
-  // The text contains a phone number written differently from the vault entry: still masked/blocked.
   await expect(
-    structureCv(
-      "Call 00351-912-000-000",
-      [{ kind: "phone", value: "+351 912 000 000" }],
+    generateStructured({
+      schema: z.object({}),
+      system: "Write to alex.moreno@example.com",
+      prompt: "Hello",
+      privateValues,
       model,
-    ),
-  ).rejects.toThrow(/phone/);
+    }),
+  ).rejects.toThrow(/email/);
   expect(model.doGenerateCalls).toHaveLength(0);
+});
+
+test("tailoring masks the vault everywhere (job text included) and keeps known entry ids", async () => {
+  const base = {
+    ...emptyContent(),
+    headline: "Backend Engineer",
+    summary: "Built a ledger.",
+    experience: [
+      {
+        id: "a1b2c3d4",
+        role: "Engineer",
+        company: "Orbital Pay",
+        location: "",
+        start: "2021",
+        end: "",
+        highlights: ["Led a team"],
+      },
+    ],
+    projects: [
+      {
+        id: "p0000001",
+        name: "Ledger",
+        link: "github.com/alexmoreno",
+        description: "",
+      },
+    ],
+  };
+  const model = recordingModel({
+    content: {
+      ...base,
+      headline: "Platform Engineer",
+      experience: [
+        { ...base.experience[0], id: "a1b2c3d4" },
+        { ...base.experience[0], id: "a1b2c3d4", company: "Duplicate id" },
+        { ...base.experience[0], id: "made-up", company: "Invented id" },
+      ],
+      projects: [
+        { id: "p0000001", name: "Ledger", link: "{{URL}}", description: "" },
+      ],
+    },
+    job: { title: "Platform Engineer", company: "Halden", language: "en" },
+    missingKeywords: ["PagerDuty"],
+  });
+
+  const result = await tailorCv(
+    base,
+    "We are hiring. Referrals to Alex Moreno at alex.moreno@example.com.",
+    { language: "", pages: 1 },
+    privateValues,
+    model,
+  );
+
+  const sent = JSON.stringify(model.doGenerateCalls);
+  for (const { value } of privateValues) expect(sent).not.toContain(value);
+  expect(result.content.experience.map((e) => e.id)[0]).toBe("a1b2c3d4");
+  expect(new Set(result.content.experience.map((e) => e.id)).size).toBe(3);
+  expect(result.content.experience[2].id).not.toBe("made-up");
+  expect(result.content.projects[0].link).toBe("github.com/alexmoreno");
+  expect(result.missingKeywords).toEqual(["PagerDuty"]);
 });

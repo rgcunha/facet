@@ -4,12 +4,15 @@
 @theme {
   --color-ink: #15181e;
   --color-muted: #545b66;
+  --color-subtle: #3a414c;
   --color-line: #dde1e7;
   --color-field: #c9ced6;
   --color-canvas: #f5f6f8;
   --color-preview: #e4e7ec;
   --color-accent: #2747c8;
   --color-accent-strong: #1d36a0;
+  --color-accent-soft: #e8ecfb;
+  --color-warn-soft: #fff1e6;
   --color-ok: #1e5a35;
   --color-ok-soft: #ddf3e4;
   --color-warn: #8a3b0a;

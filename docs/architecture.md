@@ -1,6 +1,6 @@
 # Architecture
 
-These diagrams describe the code **as it is now**, at the end of Phase 2: editing and export (Phase 1), plus PDF import with the privacy layer and the LLM adapter. Tailoring (Phase 3) is drafted in [plan.md](plan.md#architecture-documentation-class-diagrams) and moves here when it is built.
+These diagrams describe the code **as it is now**, at the end of Phase 3: editing and export (Phase 1), PDF import with the privacy layer and the LLM adapter (Phase 2), and tailoring to job offers with tracked changes (Phase 3).
 
 **Notation:** the code is plain TypeScript modules and React components rather than classes. Each one is drawn as a class with a stereotype:
 
@@ -64,8 +64,25 @@ classDiagram
     +language: string
     +pages: 1 or 2
     +content: CvContent
+    +job: Job or null
+    +changes: Changes
     +createdAt: datetime
     +updatedAt: datetime
+  }
+  class Job {
+    <<schema>>
+    +title, company, url, text, language
+    +missingKeywords: string[]
+  }
+  class Changes {
+    <<schema>>
+    +original: key to previous value
+    +flags: Flag[]
+  }
+  class Flag {
+    <<schema>>
+    +key: string
+    +facts: string[]
   }
   class CvKind {
     <<enumeration>>
@@ -116,6 +133,7 @@ classDiagram
     +pages: 1 or 2
     +contact: Contact
     +content: CvContent
+    +changes: Changes
   }
 
   Profile "1" *-- "1" Contact
@@ -123,6 +141,9 @@ classDiagram
   ImportDraft "1" *-- "0..*" PrivateValue : detected
   CvRecord --> CvKind
   CvRecord "1" *-- "1" CvContent
+  CvRecord "1" *-- "0..1" Job
+  CvRecord "1" *-- "1" Changes
+  Changes "1" *-- "0..*" Flag
   CvContent "1" *-- "0..*" Experience
   CvContent "1" *-- "0..*" Education
   CvContent "1" *-- "0..*" SkillGroup
@@ -140,7 +161,13 @@ classDiagram
 - **`CvContent` is the only CV structure that is sent to an LLM**, and only after masking.
 - **An `ImportDraft`** exists between upload and "Parse CV". It holds the extracted text, which still contains personal data, so it never leaves the machine. Parsing creates a `CvRecord` whose `sourcePdf` keeps the draft's PDF (`data/sources/<id>.pdf`) for the "Original PDF" tab, then deletes the draft.
 - **`EditorValues`** is what the editor form edits. On save it is split: the CV fields go to the CV file, and `contact` goes to the profile only when it was edited in that editor.
-- **`kind` / `baseId`** are already in the file format, so tailored variants (Phase 3) need no migration. Today every CV is a `base`.
+- **A variant** (`kind: variant`, `baseId`) is an independent copy of the CV it was tailored from, plus the `Job` it targets. Editing the base later doesn't change it.
+- **`Changes`** records what tailoring or "Tighten to fit" changed, until the user reverts or keeps each change. `original` maps a key to what was there before:
+  - `headline` / `summary`
+  - `<section>.<entryId>`: an entry that was changed, added (`null`) or removed
+  - `<section>.order`: the previous order of the entries
+  - Entries are tracked by their ids, which the model must keep, so changes survive reordering.
+  - `flags` are possible fabrications, each pointing at one of those keys.
 - **Defaults live in the schema** (zod `.default()`). Empty CVs and blank entries are derived from it, and older files that lack a newer field (e.g. `sourcePdf`, `vault`) read back with its default.
 
 ## 2. Components
@@ -172,7 +199,18 @@ classDiagram
   class Editor {
     <<component>>
     +exportPdf()
+    +tighten(overflowLines)
     import banner
+  }
+  class TailorPanel {
+    <<component>>
+    job text, fetch, language, length
+  }
+  class ChangeControls {
+    <<component>>
+    useChanges, ChangeRow, ChangesBanner
+    FabricationWarnings, MissingKeywords
+    FieldChange, EntryChange, SectionChanges
   }
   class Fields {
     <<component>>
@@ -181,8 +219,8 @@ classDiagram
   }
   class Preview {
     <<component>>
-    page-fit indicator
-    Preview / Original PDF tabs
+    page-fit indicator, Tighten to fit
+    Preview / Original PDF or Base CV tabs
   }
   class Classic {
     <<component>>
@@ -205,6 +243,23 @@ classDiagram
     +uploadPdfAction(file)
     +parseImportAction(importId, masked)
     +cancelImportAction(importId)
+    +tailorAction(cvId, job)
+    +tightenAction(cvId, overflowLines)
+    +fetchJobAction(url)
+  }
+  class Changes {
+    <<module>>
+    +recordChanges(previous, before, after, base, translated)
+    +diffContent(before, after)
+    +findFabrications(known, variant, original, translated)
+    +revertChange(content, changes, key)
+    +keepChange(changes, key)
+    +revertAll(content, changes)
+    +changeKind(original, section, id)
+  }
+  class JobFetcher {
+    <<module>>
+    +fetchJobText(url)
   }
 
   class PdfExtractor {
@@ -232,6 +287,19 @@ classDiagram
     <<module>>
     +structureCv(text, privateValues)
   }
+  class TailorCv {
+    <<module>>
+    +tailorCv(content, jobText, options, vault)
+  }
+  class TightenCv {
+    <<module>>
+    +tightenCv(content, overflowLines, vault)
+  }
+  class LlmContent {
+    <<module>>
+    +modelContentSchema(ids)
+    +withIds(parsed, known)
+  }
   class LlmGenerate {
     <<module>>
     +generateStructured(schema, system, prompt, privateValues)
@@ -252,6 +320,7 @@ classDiagram
     +createCv(title, init)
     +updateCv(id, patch)
     +deleteCv(id)
+    +getBase(cv)
   }
   class ImportStore {
     <<module>>
@@ -301,6 +370,8 @@ classDiagram
     +range(start, end)
     +visible(entries)
     +plural(n, word)
+    +normalize(s)
+    +entryValues(entry)
   }
 
   LibraryPage --> CvStore : listCvs
@@ -326,6 +397,13 @@ classDiagram
 
   Editor --> Fields
   Editor --> Preview
+  Editor --> TailorPanel
+  Editor --> ChangeControls
+  Editor --> ServerActions : tightenAction
+  Fields --> ChangeControls : entry and section notes
+  ChangeControls --> Changes : revert, keep
+  Fields --> Changes : changeKind
+  TailorPanel --> ServerActions : tailorAction, fetchJobAction
   Editor --> useAutosave
   Editor --> Format : entry summaries
   Fields --> EmptyValues : blankItem
@@ -334,15 +412,25 @@ classDiagram
   Preview --> Classic
   Preview --> PageGeometry
   Preview ..> SourceRoute : Original PDF tab
+  EditorPage --> CvStore : getBase (Base CV tab)
 
   ServerActions --> PdfExtractor
   ServerActions --> PiiDetector
   ServerActions --> StructureCv
+  ServerActions --> TailorCv
+  ServerActions --> TightenCv
+  ServerActions --> JobFetcher
+  ServerActions --> Changes : recordChanges
   ServerActions --> CvStore
   ServerActions --> ImportStore
   ServerActions --> ProfileStore : recordImport
 
   StructureCv --> LlmGenerate
+  TailorCv --> LlmGenerate
+  TightenCv --> LlmGenerate
+  StructureCv --> LlmContent
+  TailorCv --> LlmContent
+  TightenCv --> LlmContent
   LlmGenerate --> Redactor : mask before, restore after
   LlmGenerate --> OutboundGuard : every call
   LlmGenerate --> ProviderFactory
@@ -368,9 +456,17 @@ classDiagram
   1. `uploadPdfAction` reads the PDF locally (`PdfExtractor`, pdf.js) and finds personal details (`PiiDetector`, regexes and font size, no network). It stores an `ImportDraft`.
   2. `parseImportAction` sends the masked text to the model (`StructureCv`), records the import in the profile, and creates the CV. `recordImport` fills only empty contact fields, and only from values the user kept masked, so an import never overwrites the shared contact details. It also adds the masked values to the vault.
   3. **Cancel import** discards the draft and its PDF. Leftovers from imports that were never parsed (e.g. the tab was closed) are discarded at the next upload, so unmasked CV text doesn't pile up in `data/imports/`.
+- **Tailoring creates a variant.**
+  - `tailorAction` sends the CV content (never `Contact`) and the job text. Both are masked with the whole vault, so personal details in a pasted posting are masked too.
+  - Entry ids are kept, and `withIds` replaces any id the model invents or repeats.
+  - `recordChanges` records every change (`diffContent`) and flags new facts (employers, roles, dates, degrees, skills) that appear neither in the base CV nor in what the user had before this round, so anything they kept stays kept (`findFabrications`). That check is done locally, not by the model.
+  - When the variant is in another language than its base, only language-neutral facts are checked: employers, schools, dates, links and skills. The import step detects each CV's language for this.
+  - Revert and Keep (`revertChange`, `keepChange`) update the changes and their flags together.
+- **"Tighten to fit"** shortens a CV in place the same way. The editor is locked while it runs, and the action only writes if the CV wasn't saved in the meantime, so no edit is lost. Its changes are merged with earlier ones (the earliest version wins), so Revert always goes back to what you had.
+- **Job pages are fetched best-effort** (`JobFetcher`: Readability + linkedom). Pasting the text is the main way in.
 - **Pages read data on the server** via the stores; **every write goes through `ServerActions`**, which validate their input with zod. Client components never touch the file system.
 - **Only `lib/store/*` uses `node:fs`.** Every file (JSON and PDF) is written atomically through `FileStore.writeFileAtomic`, and JSON is validated on every read. Ids from URLs are checked with `isSafeId`, so a URL can't reach outside `DATA_DIR`.
 - **Personal data:**
   - **Read or written by:** `ProfileStore` (contact + vault), `ImportStore` (draft text), `SourceStore` (original PDFs) and the import actions.
   - **Shown by:** `Classic`, the editor's Contact card and `ImportReview`.
-  - **Sent to the model:** only masked text, via `LlmGenerate`.
+  - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and tailoring and tightening (the whole vault).

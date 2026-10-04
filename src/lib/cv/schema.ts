@@ -61,8 +61,39 @@ export const cvContentSchema = z.object({
   extras: listOf(customSectionSchema),
 });
 
+/** The list sections of a CV, in display order. Their entries carry an `id`. */
+export const LIST_SECTIONS = [
+  "experience",
+  "education",
+  "skills",
+  "projects",
+  "languages",
+  "extras",
+] as const;
+export type ListSection = (typeof LIST_SECTIONS)[number];
+
 export const cvIdSchema = z.string().regex(/^[a-z0-9-]{1,80}$/);
 const pagesSchema = z.union([z.literal(1), z.literal(2)]);
+
+const jobSchema = z.object({
+  title: text,
+  company: text,
+  url: text,
+  text: text,
+  language: text,
+  /** Requirements of the job that the CV doesn't show; the user adds them only if true. */
+  missingKeywords: texts,
+});
+
+/**
+ * Keys: "headline", "summary", "<section>.<entryId>" (an entry changed, added or removed) and
+ * "<section>.order" (entries reordered). Values: what was there before (null for an added entry).
+ */
+const changesSchema = z.object({
+  original: z.record(z.string(), z.unknown()).default({}),
+  /** Facts in a changed entry that the base CV doesn't contain: possible fabrication. */
+  flags: listOf(z.object({ key: z.string(), facts: z.array(z.string()) })),
+});
 
 export const cvRecordSchema = z.object({
   v: z.literal(1),
@@ -75,6 +106,10 @@ export const cvRecordSchema = z.object({
   language: z.string(),
   pages: pagesSchema,
   content: cvContentSchema,
+  /** The job offer a variant was tailored to. */
+  job: jobSchema.nullable().default(null),
+  /** What tailoring or "Tighten to fit" changed, until the user reverts or keeps each change. */
+  changes: changesSchema.prefault({}),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -108,6 +143,7 @@ export const editorValuesSchema = z.object({
   pages: pagesSchema,
   contact: contactSchema,
   content: cvContentSchema,
+  changes: changesSchema,
 });
 
 export type Contact = z.infer<typeof contactSchema>;
@@ -117,3 +153,5 @@ export type Profile = z.infer<typeof profileSchema>;
 export type EditorValues = z.infer<typeof editorValuesSchema>;
 export type PrivateValue = z.infer<typeof privateValueSchema>;
 export type ImportDraft = z.infer<typeof importDraftSchema>;
+export type Job = z.infer<typeof jobSchema>;
+export type Changes = z.infer<typeof changesSchema>;

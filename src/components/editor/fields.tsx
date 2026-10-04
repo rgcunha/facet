@@ -10,8 +10,10 @@ import {
   useWatch,
 } from "react-hook-form";
 import { blankItem } from "@/lib/cv/empty";
+import { changeKind } from "@/lib/cv/changes";
+import { EntryChange, SectionChanges, useChanges } from "./changes";
 import { joinFilled } from "@/lib/cv/format";
-import type { CvContent, EditorValues } from "@/lib/cv/schema";
+import type { CvContent, EditorValues, ListSection } from "@/lib/cv/schema";
 
 type StringListPath = FieldPathByValue<EditorValues, string[]>;
 
@@ -201,13 +203,12 @@ export function CommaListField({
   );
 }
 
-type ListKey = keyof typeof blankItem;
-type Item<K extends ListKey> = CvContent[K][number];
+type Item<K extends ListSection> = CvContent[K][number];
 // Every entry has our own `id`; RHF's generic field type for an unresolved K just can't show it.
 const entryId = (field: object) => (field as { id: string }).id;
 
 /** Watches only its own entry, so typing re-renders this line, not the whole section. */
-function EntrySummary<K extends ListKey>(props: {
+function EntrySummary<K extends ListSection>(props: {
   path: `content.${K}.${number}`;
   summary: (item: Item<K>) => string;
 }) {
@@ -220,7 +221,7 @@ function EntrySummary<K extends ListKey>(props: {
 }
 
 /** A section whose entries can be added, collapsed, reordered and removed. */
-export function ItemList<K extends ListKey>(props: {
+export function ItemList<K extends ListSection>(props: {
   section: K;
   title: string;
   addLabel: string;
@@ -235,6 +236,7 @@ export function ItemList<K extends ListKey>(props: {
     typeof name,
     "fieldKey"
   >({ name, keyName: "fieldKey" });
+  const { original } = useChanges();
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
   const setOpen = (id: string, open: boolean) =>
     setOpenIds((prev) => {
@@ -262,46 +264,56 @@ export function ItemList<K extends ListKey>(props: {
       {fields.length === 0 && (
         <p className="text-sm text-muted">Nothing here yet.</p>
       )}
-      {fields.map((f, i) => (
-        <details
-          key={f.fieldKey}
-          open={openIds.has(entryId(f))}
-          onToggle={(e) => setOpen(entryId(f), e.currentTarget.open)}
-          className="rounded-lg border border-line"
-        >
-          <summary className="flex min-h-12 cursor-pointer items-center px-3">
-            <EntrySummary<K> path={`${name}.${i}`} summary={summary} />
-          </summary>
-          <div className="flex flex-col gap-3 border-t border-line p-3">
-            {children(`${name}.${i}`, i)}
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                className="btn-link"
-                disabled={i === 0}
-                onClick={() => move(i, i - 1)}
-              >
-                Move up
-              </button>
-              <button
-                type="button"
-                className="btn-link"
-                disabled={i === fields.length - 1}
-                onClick={() => move(i, i + 1)}
-              >
-                Move down
-              </button>
-              <button
-                type="button"
-                className="btn-link ml-auto text-danger hover:text-danger"
-                onClick={() => remove(i)}
-              >
-                Remove
-              </button>
+      {fields.map((f, i) => {
+        const change = changeKind(original, section, entryId(f));
+        return (
+          <details
+            key={f.fieldKey}
+            open={openIds.has(entryId(f))}
+            onToggle={(e) => setOpen(entryId(f), e.currentTarget.open)}
+            className={`rounded-lg border ${change ? "border-accent" : "border-line"}`}
+          >
+            <summary className="flex min-h-12 cursor-pointer items-center gap-2 px-3">
+              <EntrySummary<K> path={`${name}.${i}`} summary={summary} />
+              {change && (
+                <span className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent-strong capitalize">
+                  {change}
+                </span>
+              )}
+            </summary>
+            <div className="flex flex-col gap-3 border-t border-line p-3">
+              <EntryChange section={section} id={entryId(f)} />
+              {children(`${name}.${i}`, i)}
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  className="btn-link"
+                  disabled={i === 0}
+                  onClick={() => move(i, i - 1)}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  className="btn-link"
+                  disabled={i === fields.length - 1}
+                  onClick={() => move(i, i + 1)}
+                >
+                  Move down
+                </button>
+                <button
+                  type="button"
+                  className="btn-link ml-auto text-danger hover:text-danger"
+                  onClick={() => remove(i)}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
-          </div>
-        </details>
-      ))}
+          </details>
+        );
+      })}
+      <SectionChanges section={section} currentIds={fields.map(entryId)} />
     </Card>
   );
 }

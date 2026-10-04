@@ -1,6 +1,6 @@
+import { normalize } from "@/lib/cv/format";
 import type { PrivateValue } from "@/lib/cv/schema";
 
-const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, " ");
 /** Joins digit groups ("+351 912-000 000" → "351912000000") so reformatted numbers still match. */
 const joinDigitGroups = (s: string) =>
   s.replace(/(?<=\d)[\s().\/-]+(?=\d)/g, "");

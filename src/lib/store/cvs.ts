@@ -33,6 +33,11 @@ export async function getCv(id: string) {
   return isSafeId(id) ? readJson(cvFile(id), cvRecordSchema) : null;
 }
 
+/** The base CV a variant was tailored from: the CV itself for a base, null if the base is gone. */
+export async function getBase(cv: CvRecord) {
+  return cv.baseId ? getCv(cv.baseId) : cv;
+}
+
 async function saveCv(cv: CvRecord) {
   const valid = cvRecordSchema.parse(cv);
   await writeJsonAtomic(cvFile(valid.id), valid);
@@ -55,31 +60,50 @@ async function newId(title: string) {
   }
 }
 
+type CvInit = Partial<
+  Pick<
+    CvRecord,
+    | "kind"
+    | "baseId"
+    | "sourcePdf"
+    | "language"
+    | "pages"
+    | "content"
+    | "job"
+    | "changes"
+  >
+>;
+
 export async function createCv(
   title: string,
-  init: Partial<Pick<CvRecord, "content" | "sourcePdf">> = {},
+  init: CvInit = {},
 ): Promise<CvRecord> {
   const now = new Date().toISOString();
-  const cv: CvRecord = {
+  const cv = cvRecordSchema.parse({
     v: 1,
     id: await newId(title),
-    kind: "base",
     title,
+    kind: "base",
     baseId: null,
-    sourcePdf: init.sourcePdf ?? null,
     language: "en",
     pages: 1,
-    content: init.content ?? emptyContent(),
+    content: emptyContent(),
+    ...init,
     createdAt: now,
     updatedAt: now,
-  };
+  });
   await saveCv(cv);
   return cv;
 }
 
+/** Deleting a base CV also deletes its tailored variants. */
 export async function deleteCv(id: string) {
   if (!isSafeId(id)) return;
   const cv = await getCv(id).catch(() => null); // a corrupt file can still be deleted
   await rm(cvFile(id), { force: true });
   if (cv?.sourcePdf) await deleteSourcePdf(cv.sourcePdf);
+  if (cv?.kind === "base") {
+    const variants = (await listCvs()).filter((v) => v.baseId === id);
+    await Promise.all(variants.map((v) => deleteCv(v.id)));
+  }
 }
