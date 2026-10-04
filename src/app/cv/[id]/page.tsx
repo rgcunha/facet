@@ -1,0 +1,22 @@
+import { notFound } from "next/navigation";
+import { Editor } from "@/components/editor/Editor";
+import { getCv } from "@/lib/store/cvs";
+import { getProfile } from "@/lib/store/profile";
+
+export default async function EditorPage({ params }: PageProps<"/cv/[id]">) {
+  const { id } = await params;
+  const [cv, profile] = await Promise.all([getCv(id), getProfile()]);
+  if (!cv) notFound();
+
+  return (
+    <Editor
+      id={cv.id}
+      defaultValues={{
+        title: cv.title,
+        pages: cv.pages,
+        contact: profile.contact,
+        content: cv.content,
+      }}
+    />
+  );
+}

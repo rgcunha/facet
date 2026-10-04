@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* Tokens from the v2 mockups: one blue accent; amber is reserved for masked personal data. */
+@theme {
+  --color-ink: #15181e;
+  --color-muted: #545b66;
+  --color-line: #dde1e7;
+  --color-field: #c9ced6;
+  --color-canvas: #f5f6f8;
+  --color-preview: #e4e7ec;
+  --color-accent: #2747c8;
+  --color-accent-strong: #1d36a0;
+  --color-ok: #1e5a35;
+  --color-ok-soft: #ddf3e4;
+  --color-warn: #8a3b0a;
+  --color-danger: #b42318;
+  --font-sans: var(--font-instrument-sans), system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, serif;
+}
+
+@layer base {
+  body {
+    @apply bg-canvas font-sans text-[15px] leading-normal text-ink print:bg-white;
+  }
+  a {
+    @apply text-accent hover:text-accent-strong;
+  }
+}
+
+@utility btn {
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-4 font-semibold no-underline disabled:cursor-not-allowed disabled:opacity-60;
+}
+@utility btn-primary {
+  @apply btn bg-accent text-white hover:bg-accent-strong hover:text-white;
+}
+@utility btn-secondary {
+  @apply btn border border-field bg-white text-ink hover:bg-canvas hover:text-ink;
+}
+@utility btn-link {
+  @apply btn min-h-10 px-2 text-accent hover:text-accent-strong;
+}
+@utility card {
+  @apply rounded-xl border border-line bg-white;
+}
+@utility label {
+  @apply flex flex-col gap-1 text-[13px] text-muted;
+}
+@utility input {
+  @apply min-h-[42px] w-full min-w-0 rounded-lg border border-field bg-white px-3 text-[15px] text-ink;
+}
+@utility textarea {
+  @apply input min-h-0 resize-y py-2.5;
+}
