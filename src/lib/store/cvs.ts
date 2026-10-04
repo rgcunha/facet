@@ -1,12 +1,16 @@
 import { rm } from "node:fs/promises";
 import { emptyContent, shortId } from "@/lib/cv/empty";
-import { type CvRecord, cvIdSchema, cvRecordSchema } from "@/lib/cv/schema";
-import { dataPath, listJsonFiles, readJson, writeJsonAtomic } from "./fs";
+import { type CvRecord, cvRecordSchema } from "@/lib/cv/schema";
+import {
+  dataPath,
+  isSafeId,
+  listJsonFiles,
+  readJson,
+  writeJsonAtomic,
+} from "./fs";
+import { deleteSourcePdf } from "./sources";
 
 const cvFile = (id: string) => dataPath("cvs", `${id}.json`);
-
-/** Rejects anything that is not a plain id, so a URL can never point outside the data folder. */
-const isValidId = (id: string) => cvIdSchema.safeParse(id).success;
 
 const slug = (title: string) =>
   title
@@ -26,7 +30,7 @@ export async function listCvs(): Promise<CvRecord[]> {
 }
 
 export async function getCv(id: string) {
-  return isValidId(id) ? readJson(cvFile(id), cvRecordSchema) : null;
+  return isSafeId(id) ? readJson(cvFile(id), cvRecordSchema) : null;
 }
 
 async function saveCv(cv: CvRecord) {
@@ -51,7 +55,10 @@ async function newId(title: string) {
   }
 }
 
-export async function createCv(title: string): Promise<CvRecord> {
+export async function createCv(
+  title: string,
+  init: Partial<Pick<CvRecord, "content" | "sourcePdf">> = {},
+): Promise<CvRecord> {
   const now = new Date().toISOString();
   const cv: CvRecord = {
     v: 1,
@@ -59,9 +66,10 @@ export async function createCv(title: string): Promise<CvRecord> {
     kind: "base",
     title,
     baseId: null,
+    sourcePdf: init.sourcePdf ?? null,
     language: "en",
     pages: 1,
-    content: emptyContent(),
+    content: init.content ?? emptyContent(),
     createdAt: now,
     updatedAt: now,
   };
@@ -70,5 +78,8 @@ export async function createCv(title: string): Promise<CvRecord> {
 }
 
 export async function deleteCv(id: string) {
-  if (isValidId(id)) await rm(cvFile(id), { force: true });
+  if (!isSafeId(id)) return;
+  const cv = await getCv(id).catch(() => null); // a corrupt file can still be deleted
+  await rm(cvFile(id), { force: true });
+  if (cv?.sourcePdf) await deleteSourcePdf(cv.sourcePdf);
 }

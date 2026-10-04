@@ -70,6 +70,8 @@ export const cvRecordSchema = z.object({
   kind: z.enum(["base", "variant"]),
   title: z.string(),
   baseId: cvIdSchema.nullable(),
+  /** Id of the original PDF in data/sources/, for CVs created by import. */
+  sourcePdf: cvIdSchema.nullable().default(null),
   language: z.string(),
   pages: pagesSchema,
   content: cvContentSchema,
@@ -77,9 +79,27 @@ export const cvRecordSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+/** A personal detail that must never reach an LLM provider. */
+export const privateValueSchema = z.object({
+  kind: z.enum(["name", "email", "phone", "address", "url", "dob", "custom"]),
+  value: z.string().min(1),
+});
+
 export const profileSchema = z.object({
   v: z.literal(1),
   contact: contactSchema,
+  /** Every value masked in an import; outgoing LLM requests are masked and checked against these. */
+  vault: listOf(privateValueSchema),
+});
+
+/** An uploaded PDF waiting for review on the Import screen. Holds raw text, so it stays local. */
+export const importDraftSchema = z.object({
+  v: z.literal(1),
+  id: cvIdSchema,
+  fileName: z.string(),
+  pageCount: z.number().int().positive(),
+  text: z.string(),
+  detected: z.array(privateValueSchema),
 });
 
 /** What the editor form edits and autosaves. */
@@ -95,3 +115,5 @@ export type CvContent = z.infer<typeof cvContentSchema>;
 export type CvRecord = z.infer<typeof cvRecordSchema>;
 export type Profile = z.infer<typeof profileSchema>;
 export type EditorValues = z.infer<typeof editorValuesSchema>;
+export type PrivateValue = z.infer<typeof privateValueSchema>;
+export type ImportDraft = z.infer<typeof importDraftSchema>;

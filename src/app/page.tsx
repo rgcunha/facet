@@ -4,6 +4,7 @@ import { UNTITLED_CV } from "@/lib/cv/empty";
 import { listCvs } from "@/lib/store/cvs";
 import { createCvAction } from "./actions";
 import { DeleteCvButton } from "./delete-cv-button";
+import { ImportDropZone } from "./import-drop-zone";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, {
@@ -36,9 +37,11 @@ export default async function LibraryPage() {
           </form>
         </div>
 
+        <ImportDropZone />
+
         {cvs.length === 0 ? (
           <p className="card p-8 text-center text-muted">
-            No CVs yet. Create one to get started.
+            No CVs yet. Import a PDF above, or start with “New CV”.
           </p>
         ) : (
           <ul className="flex flex-col gap-3">

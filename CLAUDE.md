@@ -29,7 +29,7 @@ Available once Phase 1 sets up the project:
 ## Privacy rules (non-negotiable)
 
 - **Personal data never reaches an LLM provider.** That means name, email, phone, address, URLs, date of birth, photo and any custom masks.
-- Every LLM call goes through `lib/llm` → `OutboundGuard`. Never call a provider SDK from anywhere else.
+- Every LLM call goes through `generateStructured` (`lib/llm/generate.ts`): it masks the prompt with the private values the caller passes, runs the outbound guard, then restores placeholders in the answer. Import passes the values the user chose to mask (so the Import screen preview is exactly what is sent); every other call must pass the profile vault. Never call `generateText` or a provider SDK anywhere else.
 - `Contact` lives only in `data/profile.json`. It is never part of `CvContent` and never part of a prompt; it is merged in only when rendering.
 - PDFs are parsed locally. Never send a raw PDF or unredacted text to a model.
 - Job description text is public and may be sent.
@@ -38,8 +38,8 @@ Available once Phase 1 sets up the project:
 ## Vendor-agnostic LLM
 
 - The provider is chosen only through `.env`: `LLM_PROVIDER=anthropic|openrouter|openai-compatible`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`.
-- App code imports only `lib/llm/index.ts` (`structureCv`, `tailorCv`, `tightenCv`). Nothing provider-specific belongs outside `lib/llm/provider.ts`.
-- Structured output always uses `generateObject` with the zod schemas from `lib/cv/schema.ts`.
+- App code calls task functions in `lib/llm` (`structureCv`; Phase 3: `tailorCv`, `tightenCv`). Nothing provider-specific belongs outside `lib/llm/provider.ts`.
+- Structured output uses AI SDK 7's `generateText` with `Output.object({ schema })` (`generateObject` is deprecated), with schemas derived from `lib/cv/schema.ts`. The default model is `claude-opus-5-5`; the Anthropic provider picks native structured output for models that reject forced tool use.
 
 ## Persistence
 

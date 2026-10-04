@@ -11,10 +11,14 @@
     "check": "next typegen && tsc --noEmit && eslint && prettier --check . && knip && jscpd src"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.71",
+    "@ai-sdk/openai-compatible": "^3.0.62",
+    "ai": "^7.0.127",
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.89.0",
+    "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -20,3 +20,6 @@ const isBlank = (entry: object) =>
 
 export const visible = <T extends object>(entries: T[]) =>
   entries.filter((entry) => !isBlank(entry));
+
+export const plural = (n: number, word: string) =>
+  `${n} ${word}${n === 1 ? "" : "s"}`;

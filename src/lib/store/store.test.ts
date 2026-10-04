@@ -3,7 +3,9 @@ import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createCv, deleteCv, getCv, listCvs, updateCv } from "./cvs";
-import { getProfile, saveProfile } from "./profile";
+import { createImport, discardAllImports, getImport } from "./imports";
+import { getProfile, recordImport, updateProfile } from "./profile";
+import { getSourcePdf } from "./sources";
 
 const root = await mkdtemp(path.join(tmpdir(), "cv-tool-"));
 let dir: string;
@@ -92,7 +94,57 @@ describe("profile", () => {
         links: ["example.com"],
       },
     };
-    await saveProfile(profile);
+    await updateProfile(profile);
     expect(await getProfile()).toEqual(profile);
+  });
+
+  test("recordImport fills only empty contact fields, from masked values, and dedupes the vault", async () => {
+    await updateProfile({
+      contact: { ...(await getProfile()).contact, location: "Porto" },
+    });
+    await recordImport([
+      { kind: "name", value: "Alex Moreno" },
+      { kind: "email", value: "alex@example.com" },
+      { kind: "address", value: "Rua do Exemplo 12, Lisboa" },
+      { kind: "url", value: "github.com/alex" },
+      { kind: "custom", value: "Maria Santos" },
+    ]);
+    // A later import never overwrites what is already there.
+    await recordImport([
+      { kind: "name", value: "alex  MORENO" },
+      { kind: "email", value: "other@example.com" },
+    ]);
+    const { contact, vault } = await getProfile();
+    expect(contact).toMatchObject({
+      name: "Alex Moreno",
+      email: "alex@example.com",
+      location: "Porto",
+    });
+    expect(contact.links).toEqual(["github.com/alex"]);
+    expect(vault.map((v) => v.value)).toEqual([
+      "Alex Moreno",
+      "alex@example.com",
+      "Rua do Exemplo 12, Lisboa",
+      "github.com/alex",
+      "Maria Santos",
+      "other@example.com",
+    ]);
+  });
+});
+
+describe("imports", () => {
+  test("discarding leftover imports removes their unmasked text and PDF", async () => {
+    const id = await createImport(new Uint8Array([37, 80, 68, 70]), {
+      fileName: "cv.pdf",
+      pageCount: 1,
+      text: "Alex Moreno",
+      detected: [{ kind: "name", value: "Alex Moreno" }],
+    });
+    expect(await getImport(id)).not.toBeNull();
+    expect(await getSourcePdf(id)).not.toBeNull();
+    await discardAllImports();
+    expect(await getImport(id)).toBeNull();
+    expect(await getSourcePdf(id)).toBeNull();
+    expect(await readdir(path.join(dir, "imports"))).toEqual([]);
   });
 });

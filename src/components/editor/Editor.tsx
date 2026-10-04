@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { joinFilled, range } from "@/lib/cv/format";
 import type { EditorValues } from "@/lib/cv/schema";
@@ -9,6 +10,7 @@ import {
   CommaListField,
   Grid,
   ItemList,
+  MoveToRole,
   StringListField,
   TextField,
 } from "./fields";
@@ -25,11 +27,17 @@ const statusText: Record<SaveStatus, string> = {
 export function Editor({
   id,
   defaultValues,
+  sourceUrl,
+  justImported = false,
 }: {
   id: string;
   defaultValues: EditorValues;
+  /** The original PDF, for CVs created by import. */
+  sourceUrl?: string;
+  justImported?: boolean;
 }) {
   const form = useForm<EditorValues>({ defaultValues });
+  const [showImportBanner, setShowImportBanner] = useState(justImported);
   const { status, flush } = useAutosave(form, id);
 
   // Open the tab synchronously (popup blockers), then point it at the print view once the latest edits are saved.
@@ -79,6 +87,28 @@ export function Editor({
         </div>
       </header>
 
+      {showImportBanner && (
+        <div className="mx-auto max-w-[1392px] px-6 pt-4">
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-4 rounded-lg bg-accent/10 px-4 py-3 text-sm"
+          >
+            <span className="flex-[1_1_400px]">
+              <strong>Parsed.</strong> Compare with your original on the right
+              and fix anything that landed in the wrong place; “Move to…” moves
+              a highlight to another role.
+            </span>
+            <button
+              type="button"
+              className="btn-link min-h-9"
+              onClick={() => setShowImportBanner(false)}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="mx-auto flex max-w-[1392px] flex-wrap items-start gap-6 px-6 pt-4 pb-12">
         <form
           aria-label="CV content"
@@ -123,7 +153,7 @@ export function Editor({
               joinFilled([e.role, e.company, range(e.start, e.end)])
             }
           >
-            {(p) => (
+            {(p, i) => (
               <>
                 <Grid>
                   <TextField name={`${p}.role`} label="Role" />
@@ -136,6 +166,7 @@ export function Editor({
                   name={`${p}.highlights`}
                   label="Highlights"
                   addLabel="Add highlight"
+                  itemActions={(h) => <MoveToRole role={i} highlight={h} />}
                 />
               </>
             )}
@@ -232,7 +263,7 @@ export function Editor({
           </ItemList>
         </form>
 
-        <Preview />
+        <Preview sourceUrl={sourceUrl} showSource={justImported} />
       </main>
     </FormProvider>
   );

@@ -1,5 +1,14 @@
 # CV Tool: Project Plan (v2, simplified)
 
+## Current status (2026-10-05)
+
+- **Phase 1:** done and committed.
+- **Phase 2 (import):** done.
+  - The `/simplify` and `/code-review` findings are fixed. The 6 review findings were: date ranges masked as phones; contact filled from rejected values; drop-zone re-pick and double drop; duplicate custom mask; fit status unmeasured behind the Original tab; abandoned imports left on disk.
+  - `bun run check` passes, and `bun test` passes 24 tests.
+  - Both browser flows pass, and the fake model received 0 of 7 personal values.
+- **Next: Phase 3 (tailoring).**
+
 ## Context
 
 A personal tool, for me plus at most 2–3 other people, each running their own copy. It keeps one or more base CVs and many tailored variants, one per job application.
@@ -42,20 +51,30 @@ Preview (same React template) ─► window.print() with @page CSS ─► PDF
 
 ### Privacy layer
 
-- `lib/privacy/detect.ts`: finds name (from the first lines / largest font in the pdf.js text items), email, phone, URLs, postal address and date of birth. Photos are never sent.
-- `lib/privacy/redact.ts`: replaces each value with a stable token (`{{NAME}}`, `{{EMAIL}}`, `{{URL_1}}`…) and puts the real values in the **vault**. Custom masks added on the Import screen go into the vault too.
-- `lib/privacy/guard.ts`: every LLM call goes through it. It throws if the outgoing payload contains any vault value (ignoring case and whitespace).
+_(As built in Phase 2.)_
+
+- `lib/privacy/detect.ts`: `detectPrivate(lines)` finds the name (largest font in the header), email, phone, URLs, postal address and date of birth, locally. It deliberately over-detects, because unmasking a value is one click on the Import screen. Photos are never sent.
+- `lib/privacy/redact.ts`:
+  - `toMasks(values)`: assigns stable placeholders (`{{NAME}}`, `{{EMAIL}}`, `{{URL}}`, `{{URL_2}}`…).
+  - `redact(text, masks)` / `rehydrate(data, masks)`: replace values with placeholders, and back.
+  - `sameValue(a, b)`: compares two values ignoring case and whitespace.
+  - `TOKEN_PATTERN`: matches a placeholder.
+- `lib/privacy/guard.ts`: `assertNoPrivateData(payload, values)` throws if a value is still present, matching case-insensitively and also catching reformatted numbers. The error names the kinds of value, never the values themselves.
+- **The vault** is `profile.vault`, a list of `PrivateValue { kind, value }`. Every value the user kept masked in an import is added to it.
 - The CV's `contact` block is **never** in an LLM payload. It lives only in `profile.json` and is merged back in locally when rendering.
-- Tailoring sends the CV content without contact details, so the Tailor panel has no review step, just one line explaining what is sent.
+- Tailoring sends the CV content without contact details and masks it with the vault, so the Tailor panel has no review step, just one line explaining what is sent.
 
 ### LLM adapter (vendor agnostic)
 
-- Vercel AI SDK `generateObject` with zod schemas.
-- `lib/llm/provider.ts` reads `LLM_PROVIDER=anthropic|openrouter|openai-compatible`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`. Packages: `@ai-sdk/anthropic`, `@openrouter/ai-sdk-provider`, `@ai-sdk/openai-compatible`.
-- Three operations in `lib/llm/index.ts`, each wrapped by the guard:
-  - `structureCv(redactedText)`: returns `CvContent`.
-  - `tailorCv(content, jobText, { language, pages })`: returns `CvContent` plus `missingKeywords[]` and `jobMeta {title, company, language}`.
-  - `tightenCv(content, overflowLines)`: returns a shortened `CvContent`.
+_(As built in Phase 2.)_
+
+- AI SDK 7: `generateText` with `Output.object({ schema })` (`generateObject` is deprecated). The Anthropic provider automatically uses native structured output for models that reject forced tool use, such as `claude-opus-5-5`.
+- `lib/llm/provider.ts`: `getModel()` reads `LLM_PROVIDER=anthropic|openai-compatible`, `LLM_MODEL` (default in `.env.example`: `claude-opus-5-5`), `LLM_API_KEY` and `LLM_BASE_URL`. `openai-compatible` covers OpenRouter, Ollama and LM Studio. Packages: `@ai-sdk/anthropic`, `@ai-sdk/openai-compatible`.
+- `lib/llm/generate.ts`: `generateStructured({ schema, system, prompt, privateValues })` is the **only** path to a model. It runs mask → guard → call → rehydrate.
+- Task functions:
+  - `structure.ts`, built: `structureCv(text, privateValues)` returns `CvContent` (ids are added locally).
+  - Phase 3: `tailorCv(content, jobText, { language, pages }, vault)` returns `CvContent` plus `missingKeywords[]` and `jobMeta {title, company, language}`.
+  - Phase 3: `tightenCv(content, overflowLines, vault)` returns a shortened `CvContent`.
 
 ### CV data model (`lib/cv/schema.ts`, zod, the single source of truth)
 
@@ -71,11 +90,13 @@ Preview (same React template) ─► window.print() with @page CSS ─► PDF
 
 ```
 data/
-  profile.json            # contact details + PII vault (the only personal data)
+  profile.json            # contact details + PII vault
   cvs/
     <id>.json             # one file per base CV or variant
+  imports/
+    <id>.json             # import draft (extracted text, detected values) between upload and Parse; deleted after
   sources/
-    <id>.pdf              # original PDF of an imported base CV (for the "Original PDF" tab)
+    <id>.pdf              # original PDF of an imported CV (for the "Original PDF" tab)
 ```
 
 **`profile.json`**
@@ -92,8 +113,8 @@ data/
     "dateOfBirth": null,
   },
   "vault": [
-    { "token": "{{NAME}}", "value": "…" },
-    { "token": "{{CUSTOM_1}}", "value": "…" },
+    { "kind": "name", "value": "…" },
+    { "kind": "custom", "value": "…" },
   ],
 }
 ```
@@ -130,9 +151,11 @@ There is one profile per installation, because each person runs their own copy. 
 
 **Access layer:** `lib/store/` is the only code that touches the file system. If storage ever changes (e.g. to SQLite), only these files do.
 
-- `profile.ts`: `getProfile()`, `saveProfile()`
-- `cvs.ts`: `listCvs()` (reads the folder; grouping variants under their base comes with Phase 3), `getCv(id)`, `createCv(title)`, `updateCv(id, patch)` (merges and stamps `updatedAt`), `deleteCv(id)` (deleting a base asks first and deletes its variants and source PDF)
-- `sources.ts`: `saveSourcePdf(id, buffer)`, `getSourcePdf(id)`
+- `fs.ts`: `dataPath`, `isSafeId`, `readJson` (validated), `writeFileAtomic`, `writeJsonAtomic`, `listJsonFiles`
+- `profile.ts`: `getProfile()`, `updateProfile(patch | fn)` (merges), `recordImport(masked)`
+- `cvs.ts`: `listCvs()` (grouping variants under their base comes with Phase 3), `getCv(id)`, `createCv(title, { content, sourcePdf })`, `updateCv(id, patch)` (merges and stamps `updatedAt`), `deleteCv(id)` (also deletes its source PDF; Phase 3: deleting a base also deletes its variants)
+- `imports.ts`: `createImport`, `getImport`, `deleteImport` (+ cancel/purge from finding 6)
+- `sources.ts`: `saveSourcePdf`, `getSourcePdf`, `deleteSourcePdf`
 
 **Rules:**
 
@@ -144,7 +167,7 @@ There is one profile per installation, because each person runs their own copy. 
 ## Key implementation notes
 
 - **PDF in:** `unpdf` (pdf.js) on the server; text items with font sizes help detect the name and headings. A PDF with no text layer gets a clear error and an option to start from an empty CV.
-- **Original PDF tab:** render `sources/<id>.pdf` with pdf.js in the browser. Highlighting the source line behind a selected field is a nice-to-have.
+- **Original PDF tab:** built as a route handler, `/cv/[id]/source`, that serves `sources/<id>.pdf` in an iframe, so the browser's own PDF viewer shows it and no client-side pdf.js is needed. Highlighting the source line behind a selected field is a nice-to-have.
 - **Template & export:** one React template, `templates/Classic.tsx`, used by the preview and by a print-only route `/cv/[id]/print`, with `@page { size: A4; margin: … }`. Export opens that route and calls `window.print()`. Setting `document.title` to `First-Last_Company` makes that the default filename.
 - **Page fit:** the preview renders at real A4 size (mm units). Compare the content height with the page height and convert the overflow to lines. **Tighten to fit** calls `tightenCv`; it records the previous values in `changes.original`, so its edits are highlighted with Revert, the same way as tailoring.
 - **Fabrication check** (`lib/cv/fabrication.ts`, no LLM): compares the sets of companies, roles, dates, degrees and skill items between the variant and its base. Anything new becomes a `flags[]` entry, shown as the warning banner (Remove / Keep).
@@ -422,7 +445,7 @@ Four phases: Phase 0 (mockups) is done, and Phases 1–3 are the build. Each bui
 
 **Phase 1: Foundation, no AI.** ✅ Done (2026-10-05). Copy this plan to `docs/plan.md` · `docs/architecture.md`, with both class diagrams written from the drafts above · `bun run check` (`tsc --noEmit`, ESLint, Prettier, `knip`, `jscpd`) · `bun create next-app` (TS, App Router, Tailwind; Bun as package manager) · zod schema · `lib/store` + `profile.json` · Library · Editor form + Classic template preview · page-fit indicator · print export. Done when a CV can be created by hand, edited, autosaved and exported, and the diagrams match the code.
 
-**Phase 2: Import.** Upload + `unpdf` extraction · detect/redact/vault · Import screen (chips, What's sent, Parse) · LLM adapter + guard + `structureCv` · Original PDF tab · Move to… menu · diagrams updated.
+**Phase 2: Import.** ✅ Done (2026-10-05). Upload + `unpdf` extraction · detect/redact/vault · Import screen (chips, What's sent, Parse) · LLM adapter + guard + `structureCv` · Original PDF tab · Move to… menu · diagrams updated.
 
 **Phase 3: Tailor.** Tailor panel (paste / fetch, language, length) · `tailorCv` · variant creation with `changes.original` · highlights + Revert · fabrication check · missing keywords · Tighten to fit · diagrams updated.
 
@@ -432,12 +455,20 @@ Four phases: Phase 0 (mockups) is done, and Phases 1–3 are the build. Each bui
 
 - `CLAUDE.md`: project rules (privacy, persistence, lean-code rules, definition of done)
 - `src/lib/cv/{schema,empty,format,page}.ts` (+ `fabrication.ts` in Phase 3). Empty values come from zod `.default()`s in the schema.
-- `src/lib/store/{profile,cvs,sources,fs}.ts`: `fs.ts` holds the atomic write and the zod-validated read
-- `src/lib/privacy/{detect,redact,rehydrate,guard}.ts`
-- `src/lib/llm/{provider,structure,tailor,tighten,index}.ts`
-- `src/lib/pdf/extract.ts`, `src/lib/job/fetch.ts`
-- `src/templates/Classic.tsx`, `src/templates/print.css`
-- `src/app/page.tsx` (Library), `src/app/import/page.tsx`, `src/app/cv/[id]/page.tsx`, `src/app/cv/[id]/print/page.tsx`, `src/app/actions.ts` (server actions)
+- `src/lib/store/{fs,profile,cvs,imports,sources}.ts`: `fs.ts` holds the atomic write and the zod-validated read
+- `src/lib/privacy/{detect,redact,guard}.ts` (`redact.ts` also holds `rehydrate`)
+- `src/lib/llm/{provider,generate,structure}.ts` (+ `tailor.ts`, `tighten.ts` in Phase 3)
+- `src/lib/pdf/extract.ts` (+ `src/lib/job/fetch.ts` in Phase 3)
+- `src/templates/Classic.tsx` (print CSS lives in `lib/cv/page.ts` + the print route)
+- **Routes:**
+  - `src/app/page.tsx` (Library) + `import-drop-zone.tsx`
+  - `src/app/import/[id]/{page,import-review}.tsx`
+  - `src/app/cv/[id]/page.tsx`
+  - `src/app/cv/[id]/print/page.tsx`
+  - `src/app/cv/[id]/source/route.ts`
+- **Editor and actions:**
+  - `src/components/editor/{Editor,fields,Preview,use-autosave}.tsx`
+  - `src/app/actions.ts` (server actions)
 - `.env.example`: `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`, `DATA_DIR`
 - `docs/architecture.md`: the class diagrams (data model + components) with short explanations
 
