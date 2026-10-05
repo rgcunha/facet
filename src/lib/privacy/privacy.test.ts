@@ -54,6 +54,34 @@ describe("detectPrivate", () => {
     });
   });
 
+  test("finds a date of birth with no label, or whose label is on the line before", () => {
+    const year = new Date().getFullYear() - 35;
+    const found = detectPrivate(
+      lines(
+        ["Ana Silva", 20],
+        [`12.03.${year} · Lisbon`],
+        ["Geburtsdatum"],
+        [`1 March ${year - 1}`],
+        ["EXPERIENCE"],
+      ),
+    );
+    expect(Object.values(kinds(found)).filter((k) => k === "dob")).toHaveLength(
+      2,
+    );
+    expect(kinds(found)).toMatchObject({
+      [`12.03.${year}`]: "dob",
+      [`1 March ${year - 1}`]: "dob",
+    });
+  });
+
+  test("does not mistake a recent full date in the header for a date of birth", () => {
+    const recent = new Date().getFullYear() - 2;
+    const found = detectPrivate(
+      lines(["Ana Silva", 20], [`Available from 01.09.${recent}`]),
+    );
+    expect(kinds(found)).toEqual({ "Ana Silva": "name" });
+  });
+
   test("does not mistake years, date ranges or skills for personal data", () => {
     const found = detectPrivate(
       lines(

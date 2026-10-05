@@ -26,6 +26,23 @@ const SEGMENT_SEPARATOR = /\s*[·|•]\s*|\s{3,}/;
 
 const digits = (s: string) => s.replace(/\D/g, "");
 
+const dateIn = (line?: TextLine) => line?.text.match(DATE)?.[0];
+
+/** A full date whose year makes the person 16–80 years old: CV headers also hold other dates. */
+function plausibleBirthDate(line: TextLine) {
+  const date = dateIn(line);
+  if (!date) return undefined;
+  const year = Number(date.match(/(?:19|20)\d{2}/)?.[0]);
+  const thisYear = new Date().getFullYear();
+  return year >= thisYear - 80 && year <= thisYear - 16 ? date : undefined;
+}
+
+/** Labelled ("Born: 1990-03-12"), label on its own line, or no label at all. */
+const birthDate = (header: TextLine[], i: number) =>
+  BIRTH.test(header[i].text)
+    ? (dateIn(header[i]) ?? dateIn(header[i + 1]))
+    : plausibleBirthDate(header[i]);
+
 function findName(header: TextLine[]) {
   const candidates = header.filter((l) => NAME.test(l.text.trim()));
   const largest = Math.max(...header.map((l) => l.size));
@@ -57,8 +74,8 @@ export function detectPrivate(lines: TextLine[]): PrivateValue[] {
     if (n >= 9 && n <= 15 && !DATE_RANGE.test(m[0].trim()) && !DATE.test(m[0]))
       add("phone", m[0]);
   }
-  for (const line of header) {
-    if (BIRTH.test(line.text)) add("dob", line.text.match(DATE)?.[0]);
+  for (const [i, line] of header.entries()) {
+    add("dob", birthDate(header, i));
     for (const segment of line.text.split(SEGMENT_SEPARATOR)) {
       const s = segment.replace(EMAIL, "").replace(URL, "").trim();
       if ((STREET.test(s) && /\d/.test(s)) || POSTCODE_CITY.test(s))
