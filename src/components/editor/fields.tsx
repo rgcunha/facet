@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import {
   type FieldPath,
   type FieldPathByValue,
@@ -66,7 +66,7 @@ export function TextField({
   );
 }
 
-/** One input per entry, e.g. the highlights of a role. */
+/** One input per entry, e.g. the highlights of a role, which can be reordered. */
 export function StringListField({
   name,
   label,
@@ -79,9 +79,26 @@ export function StringListField({
   const { field } = useController<EditorValues, StringListPath>({ name });
   const items = field.value;
   const set = (next: string[]) => field.onChange(next);
+  const listRef = useRef<HTMLFieldSetElement>(null);
+
+  // Swaps item i with its neighbour. Focus follows the item, so repeated presses keep moving it;
+  // at the top or bottom, where that arrow is disabled, it lands on the row's other arrow.
+  const move = (i: number, direction: "up" | "down") => {
+    const j = direction === "up" ? i - 1 : i + 1;
+    const next = [...items];
+    [next[i], next[j]] = [next[j], next[i]];
+    set(next);
+    requestAnimationFrame(() => {
+      const arrow = (d: "up" | "down") =>
+        listRef.current?.querySelector<HTMLButtonElement>(
+          `[data-move="${j}-${d}"]:not(:disabled)`,
+        );
+      (arrow(direction) ?? arrow(direction === "up" ? "down" : "up"))?.focus();
+    });
+  };
 
   return (
-    <fieldset className="flex flex-col gap-2">
+    <fieldset ref={listRef} className="flex flex-col gap-2">
       <legend className="mb-1 text-[13px] text-muted">{label}</legend>
       {items.map((value, i) => (
         <div key={i} className="flex gap-2">
@@ -93,6 +110,19 @@ export function StringListField({
               set(items.map((v, j) => (j === i ? e.target.value : v)))
             }
           />
+          {(["up", "down"] as const).map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              className="btn-link px-2 text-muted"
+              data-move={`${i}-${direction}`}
+              aria-label={`Move ${label.toLowerCase()} ${i + 1} ${direction}`}
+              disabled={direction === "up" ? i === 0 : i === items.length - 1}
+              onClick={() => move(i, direction)}
+            >
+              {direction === "up" ? "↑" : "↓"}
+            </button>
+          ))}
           <button
             type="button"
             className="btn-link text-muted"
