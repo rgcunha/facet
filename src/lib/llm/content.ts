@@ -7,16 +7,32 @@ import {
   type ListSection,
 } from "@/lib/cv/schema";
 
+/**
+ * The model must see every field as required. The AI SDK builds its JSON schema from the input side,
+ * where a field with a default is optional, and models then skip fields such as a job's `role`.
+ * Shallow on purpose: only the fields of one object lose their default, which covers every level
+ * of CvContent today (a nested object with its own defaults would need the same treatment).
+ */
+const required = (object: z.ZodObject) =>
+  z.object(
+    Object.fromEntries(
+      Object.entries(object.shape).map(([key, field]) => [
+        key,
+        field instanceof z.ZodDefault ? field.unwrap() : field,
+      ]),
+    ),
+  );
+
 // Widened to ZodObject: TS can't call .omit/.extend on the union of the six item schemas.
 const itemSchema = (section: ListSection) =>
-  cvContentSchema.shape[section].unwrap().element as z.ZodObject;
+  required(cvContentSchema.shape[section].unwrap().element as z.ZodObject);
 
 /**
  * CvContent as the model reads and writes it. Entry ids are ours: left out when structuring a new
  * CV, kept (optional) when changing an existing one, so every change can be traced to its entry.
  */
 export const modelContentSchema = (ids: "omit" | "keep") =>
-  cvContentSchema.extend(
+  required(cvContentSchema).extend(
     Object.fromEntries(
       LIST_SECTIONS.map((section) => [
         section,

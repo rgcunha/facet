@@ -4,6 +4,7 @@ import type { PrivateValue } from "@/lib/cv/schema";
 import { z } from "zod";
 import { emptyContent } from "@/lib/cv/empty";
 import { privateValuesOf } from "@/lib/privacy/values";
+import { modelContentSchema } from "./content";
 import { generateStructured } from "./generate";
 import { structureCv } from "./structure";
 import { tailorCv } from "./tailor";
@@ -200,4 +201,19 @@ test("a CV's own contact and vault are masked in tailoring, without being passed
     "Orbital Pay Ltd",
   ])
     expect(sent).not.toContain(value);
+});
+
+test("the schema sent to the model requires every field, so none (like a job's role) is skipped", () => {
+  const json = z.toJSONSchema(modelContentSchema("omit"), {
+    io: "input",
+  }) as unknown as {
+    required: string[];
+    properties: { experience: { items: { required: string[] } } };
+  };
+  expect(json.required).toEqual(
+    expect.arrayContaining(["headline", "summary", "experience"]),
+  );
+  expect(json.properties.experience.items.required).toEqual(
+    expect.arrayContaining(["role", "company", "start", "end", "highlights"]),
+  );
 });
