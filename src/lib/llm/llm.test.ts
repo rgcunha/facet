@@ -3,6 +3,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import type { PrivateValue } from "@/lib/cv/schema";
 import { z } from "zod";
 import { emptyContent } from "@/lib/cv/empty";
+import { privateValuesOf } from "@/lib/privacy/values";
 import { generateStructured } from "./generate";
 import { structureCv } from "./structure";
 import { tailorCv } from "./tailor";
@@ -160,4 +161,43 @@ test("tailoring masks the vault everywhere (job text included) and keeps known e
   expect(result.content.experience[2].id).not.toBe("made-up");
   expect(result.content.projects[0].link).toBe("github.com/alexmoreno");
   expect(result.missingKeywords).toEqual(["PagerDuty"]);
+});
+
+test("a CV's own contact and vault are masked in tailoring, without being passed separately", async () => {
+  const cv = {
+    contact: {
+      name: "Sam Rivera",
+      email: "sam.rivera@example.org",
+      phone: "",
+      location: "",
+      dateOfBirth: "",
+      links: [],
+    },
+    vault: [{ kind: "custom" as const, value: "Orbital Pay Ltd" }],
+    content: {
+      ...emptyContent(),
+      summary: "Sam Rivera built payments at Orbital Pay Ltd.",
+    },
+  };
+  const model = recordingModel({
+    content: cv.content,
+    job: { title: "Engineer", company: "Halden", language: "en" },
+    missingKeywords: [],
+  });
+
+  await tailorCv(
+    cv.content,
+    "Contact sam.rivera@example.org about this role. ".repeat(5),
+    { language: "", pages: 1 },
+    privateValuesOf(cv),
+    model,
+  );
+
+  const sent = JSON.stringify(model.doGenerateCalls);
+  for (const value of [
+    "Sam Rivera",
+    "sam.rivera@example.org",
+    "Orbital Pay Ltd",
+  ])
+    expect(sent).not.toContain(value);
 });
