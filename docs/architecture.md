@@ -418,6 +418,7 @@ classDiagram
     +plural(n, word)
     +fold(s)
     +normalize(s)
+    +emphasis(text)
     +entryValues(entry)
   }
 

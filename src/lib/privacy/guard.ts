@@ -11,12 +11,14 @@ export function assertNoPrivateData(
   payload: string,
   privateValues: PrivateValue[],
 ) {
-  const text = normalize(payload);
+  // Emphasis markers ("**Acme** Corp") must not hide a value: they count as spaces.
+  const plain = (s: string) => normalize(s.replace(/\*/g, " "));
+  const text = plain(payload);
   const numbers = joinDigitGroups(payload);
   const leaked = privateValues.filter(({ value }) => {
     const n = digits(value);
     return (
-      text.includes(normalize(value)) || (n.length >= 7 && numbers.includes(n))
+      text.includes(plain(value)) || (n.length >= 7 && numbers.includes(n))
     );
   });
   if (leaked.length === 0) return;

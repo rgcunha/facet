@@ -164,3 +164,12 @@ describe("assertNoPrivateData", () => {
     }
   });
 });
+
+test("emphasis markers inside a multi-word value don't hide it from masking or the guard", () => {
+  const values: PrivateValue[] = [{ kind: "custom", value: "Acme Corp" }];
+  const text = "Shipped billing for **Acme** Corp and *Acme Corp*.";
+  const masked = redact(text, toMasks(values));
+  expect(masked).not.toMatch(/acme|corp/i);
+  expect(() => assertNoPrivateData(masked, values)).not.toThrow();
+  expect(() => assertNoPrivateData(text, values)).toThrow(/custom/);
+});

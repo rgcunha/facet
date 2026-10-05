@@ -71,10 +71,13 @@ export function StringListField({
   name,
   label,
   addLabel,
+  hint,
 }: {
   name: StringListPath;
   label: string;
   addLabel: string;
+  /** Shown under the label, e.g. which formatting works. */
+  hint?: string;
 }) {
   const { field } = useController<EditorValues, StringListPath>({ name });
   const items = field.value;
@@ -100,6 +103,7 @@ export function StringListField({
   return (
     <fieldset ref={listRef} className="flex flex-col gap-2">
       <legend className="mb-1 text-[13px] text-muted">{label}</legend>
+      {hint && <p className="-mt-1 text-xs text-muted">{hint}</p>}
       {items.map((value, i) => (
         <div key={i} className="flex gap-2">
           <input

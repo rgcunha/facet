@@ -32,3 +32,23 @@ export const visible = <T extends object>(entries: T[]) =>
 
 export const plural = (n: number, word: string) =>
   `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * Inline emphasis in a list item: "**bold**" and "*italic*", the markdown people already type.
+ * As in CommonMark, a marker only opens after a space or punctuation and only closes before one,
+ * so asterisks in "5* rating", "2 * 3", "*nix/*BSD" or "*.ts" stay plain text.
+ */
+const EMPHASIS =
+  /((?<![\p{L}\p{N}*])\*\*(?=[^\s*])[^*\n]+?(?<=[^\s*])\*\*(?![\p{L}\p{N}*])|(?<![\p{L}\p{N}*/])\*(?=[\p{L}\p{N}])[^*\n]*?(?<=[^\s*])\*(?![\p{L}\p{N}*]))/u;
+
+export function emphasis(text: string) {
+  return text
+    .split(EMPHASIS)
+    .map((part, i) => {
+      if (i % 2 === 0) return { text: part, style: null };
+      return part.startsWith("**")
+        ? { text: part.slice(2, -2), style: "bold" as const }
+        : { text: part.slice(1, -1), style: "italic" as const };
+    })
+    .filter((part) => part.text);
+}

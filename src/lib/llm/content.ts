@@ -80,6 +80,10 @@ export function withIds(
   });
 }
 
+/** For prompts that change a CV's wording. */
+export const EMPHASIS_RULE =
+  "Highlights and other list items may mark words with **bold** or *italic* (markdown). Keep the markers around the same words when you keep or rephrase them, and add no new ones.";
+
 /** Shared by every prompt that receives a CV. */
 export const PLACEHOLDER_RULE =
   "Personal details were replaced with placeholders such as {{NAME}} or {{URL_2}}. Keep a placeholder exactly as written where it belongs; never guess what it stands for.";

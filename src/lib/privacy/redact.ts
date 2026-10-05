@@ -25,7 +25,8 @@ export function toMasks(values: PrivateValue[]): Mask[] {
 }
 
 /**
- * How a value may appear in text: words with any whitespace between them, and for numbers
+ * How a value may appear in text: words with any whitespace or emphasis markers ("**Acme** Corp")
+ * between them, and for numbers
  * (phones) the same digits with any common separators ("+351 912-345-678", "00351912345678").
  */
 function patternFor(value: string) {
@@ -35,7 +36,7 @@ function patternFor(value: string) {
     digits.length >= value.replace(/\s/g, "").length - 2
   )
     return digits.split("").join("[\\s().\\/-]*");
-  return value.trim().split(/\s+/).map(escapeRegExp).join("\\s+");
+  return value.trim().split(/\s+/).map(escapeRegExp).join("[\\s*]+");
 }
 
 /** Replaces every occurrence of each value (any case, any formatting, see `patternFor`) with its token. */

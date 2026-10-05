@@ -1,4 +1,4 @@
-import { filled, joinFilled, visible } from "@/lib/cv/format";
+import { emphasis, filled, joinFilled, visible } from "@/lib/cv/format";
 import type { Contact, CvContent, CvView } from "@/lib/cv/schema";
 
 /** What every template prints: only filled-in values, so entries added but left empty take no space. */
@@ -28,6 +28,15 @@ export const languagesLine = (languages: CvContent["languages"]) =>
     languages.map((l) => joinFilled([l.name, l.level && `(${l.level})`], " ")),
   );
 
+/** Text with its **bold** and *italic* markup rendered. */
+function Emphasis({ text }: { text: string }) {
+  return emphasis(text).map((part, i) => {
+    if (!part.style) return part.text;
+    const Tag = part.style === "bold" ? "strong" : "em";
+    return <Tag key={i}>{part.text}</Tag>;
+  });
+}
+
 /** A bulleted list of the filled-in items; each template sets the indent. */
 export function Bullets({
   items,
@@ -39,7 +48,9 @@ export function Bullets({
   return (
     <ul className={`list-disc ${className}`}>
       {filled(items).map((item, i) => (
-        <li key={i}>{item}</li>
+        <li key={i}>
+          <Emphasis text={item} />
+        </li>
       ))}
     </ul>
   );

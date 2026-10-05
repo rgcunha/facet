@@ -3,6 +3,7 @@ import { z } from "zod";
 import { plural } from "@/lib/cv/format";
 import type { CvContent, MatchReport, PrivateValue } from "@/lib/cv/schema";
 import {
+  EMPHASIS_RULE,
   idsOf,
   modelContentSchema,
   PLACEHOLDER_RULE,
@@ -38,6 +39,7 @@ You must never:
 
 Entry ids: keep each entry's "id" exactly as given; leave it out only for an entry you add by splitting an existing one.
 ${PLACEHOLDER_RULE}
+${EMPHASIS_RULE}
 Contact details are handled separately: never put them in any field.
 Length: one page holds roughly 350–450 words of CV text; two pages about twice that.`;
 

@@ -222,6 +222,7 @@ export function Editor({
                   <StringListField
                     name={`${p}.highlights`}
                     label="Highlights"
+                    hint="**bold** and *italic* work."
                     addLabel="Add highlight"
                   />
                 </>
@@ -313,6 +314,7 @@ export function Editor({
                     name={`${p}.items`}
                     label="Entries"
                     addLabel="Add entry"
+                    hint="**bold** and *italic* work."
                   />
                 </>
               )}
