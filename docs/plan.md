@@ -1,8 +1,8 @@
-# CV Tool: Project Plan (v2, simplified)
+# CV Tool: Project Plan (v3)
 
 > **Superseded in one respect:** contact details and the PII vault are now stored per CV (`contact` and `vault` in `cvs/<id>.json`), not in a shared `profile.json`. Where this plan says `Profile` or `profile.json`, see `docs/architecture.md` for the current design.
 
-## Current status (2026-10-05)
+## Current status (2026-10-06)
 
 - **Phase 1:** done and committed.
 - **Phase 2 (import):** done.
@@ -12,7 +12,13 @@
 - **Phase 3 (tailoring):** done.
   - `/simplify` and `/code-review` are applied. The 4 review findings were: tighten could lose edits made during the call; translated facts were flagged as fabrications; kept facts were re-flagged; an orphaned variant used itself as its base.
   - `bun test` passes 35 tests, and all three browser flows pass with no personal data sent to the (fake) model.
-- **Not yet tried:** a real Claude API call (no key on this machine), and the Original PDF tab in a non-headless browser.
+- **After Phase 3 (from user feedback):**
+  - Contact details and the vault moved from `profile.json` onto each CV, so importing someone else's CV shows their own details.
+  - A date of birth without a label is detected (header only, age 16–80).
+  - Job titles are no longer dropped on import: the schema sent to the model marks every field required.
+  - The "Move to…" menu on highlights was removed.
+  - Real model calls run through OpenRouter (`deepseek/deepseek-v4.1-flash`).
+- **Next:** Phase 4 (match report), then Phase 5 (templates). Mockups: the v3 row on the canvas.
 
 ## Context
 
@@ -443,15 +449,41 @@ Key points:
 
 ## Delivery phases
 
-Four phases: Phase 0 (mockups) is done, and Phases 1–3 are the build. Each build phase produces a working app.
+Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each build phase produces a working app.
 
-**Phase 0: Mockups.** Done (v2 row on the canvas).
+**Phase 0: Mockups.** Done: v2 row for Phases 1–3, v3 row for Phases 4–5.
 
 **Phase 1: Foundation, no AI.** ✅ Done (2026-10-05). Copy this plan to `docs/plan.md` · `docs/architecture.md`, with both class diagrams written from the drafts above · `bun run check` (`tsc --noEmit`, ESLint, Prettier, `knip`, `jscpd`) · `bun create next-app` (TS, App Router, Tailwind; Bun as package manager) · zod schema · `lib/store` + `profile.json` · Library · Editor form + Classic template preview · page-fit indicator · print export. Done when a CV can be created by hand, edited, autosaved and exported, and the diagrams match the code.
 
 **Phase 2: Import.** ✅ Done (2026-10-05). Upload + `unpdf` extraction · detect/redact/vault · Import screen (chips, What's sent, Parse) · LLM adapter + guard + `structureCv` · Original PDF tab · Move to… menu (removed later: copy and paste covers the rare misplaced bullet) · diagrams updated.
 
 **Phase 3: Tailor.** ✅ Done (2026-10-05). Tailor panel (paste / fetch, language, length) · `tailorCv` · variant creation with `changes.original` · highlights + Revert · fabrication check · missing keywords · Tighten to fit · diagrams updated.
+
+**Phase 4: Match report and tailoring from confirmed gaps.** Mockups: v3 "Tailor panel: match report + confirm gaps" and "Variant: score before → after".
+
+- **Flow:** in the Tailor panel, paste the job → **Analyze** → the report shows the score, strengths, gaps, missing skills and suggestions → tick the gaps that are true → **Create tailored variant**. The variant opens with the score before → after and a **Match report** tab beside Preview and Base CV.
+- **Schema** (`schema.ts`):
+  - `requirementSchema`: `{ name, synonyms[], priority: must | nice }`.
+  - `matchReportSchema`: `{ requirements[], title, yearsRequired, strengths[], gaps[{ name, why }], missing[], suggestions[], confirmed[], createdAt }`. `gaps` are skills the CV suggests but doesn't show; `missing` are skills it doesn't suggest at all.
+  - `jobSchema` gains `report: matchReportSchema | null` and loses `missingKeywords` (now `report.missing`).
+  - The report is stored only on the variant it produced. A report you don't tailor from is not saved.
+- **AI:** `lib/llm/analyze.ts`: `analyzeCv(content, jobText, privateValues)`, one call through `generateStructured`, masked with the CV's private values like tailoring. It returns everything in the report except `confirmed` and `createdAt`.
+- **Score (local, no AI):** `lib/match/score.ts`: `scoreCv(content, report, template)` returns the total and each part, so it can run in the browser and update as you edit.
+  - Must-have requirements 50%, job title 20%, nice-to-have 15%, ATS readability 10%, years of experience 5%.
+  - A requirement counts when its name or a synonym appears in the CV text (case-, accent- and punctuation-insensitive, whole words).
+  - Years of experience are summed from the experience dates; title match compares the headline and latest role with the job title.
+- **ATS readability:** `lib/match/parsability.ts`: standard section names, dates an ATS can read, contact present, single-column template (always true until Phase 5). Each check has a short message for the report.
+- **Tailoring:** `tailorCv` also receives the report and the confirmed skills. The prompt may add confirmed skills and nothing else new. `recordChanges` adds the confirmed skills to the known facts, so they aren't flagged as possible fabrications. `tailorCv` no longer returns `missingKeywords`.
+- **UI:** `TailorPanel` gains the Analyze step and the report with checkboxes; a `MatchReport` component is shared by the panel and the variant's tab; the variant header shows the score before → after. The "Not in your CV" card goes away.
+- **Tests:** `scoreCv` (each part, synonyms, whole words), `parsability`, the fabrication check with confirmed skills, and the privacy test extended to `analyzeCv`.
+- **Diagrams:** add `MatchReport`, `Requirement`, `AnalyzeCv`, `MatchScore`, `Parsability`; update `Job` and `TailorCv`.
+
+**Phase 5: Templates.** Mockup: v3 "Template picker".
+
+- `template: classic | sidebar | modern` on each CV (default `classic`), picked in the preview toolbar, saved with the CV and used by the print route. Variants copy it from their base.
+- `src/templates/Sidebar.tsx`: bold uppercase name, contact on one line, a narrow left column (education, skills, languages) and experience on the right as `COMPANY | Role`.
+- `src/templates/Modern.tsx`: one column, sans-serif, centered header in an accent color, skills right after the summary, role first then company, location and dates.
+- "Tighten to fit" uses each template's words per line. The ATS readability check fails "single column" for Sidebar.
 
 **Every phase ends with the Definition of done in `CLAUDE.md`:** `bun run check` + `bun test` pass → `/simplify` → `/code-review` → diagrams up to date → UI tried in the browser.
 
@@ -463,7 +495,8 @@ Four phases: Phase 0 (mockups) is done, and Phases 1–3 are the build. Each bui
 - `src/lib/privacy/{detect,redact,guard}.ts` (`redact.ts` also holds `rehydrate`)
 - `src/lib/llm/{provider,generate,structure}.ts` (+ `tailor.ts`, `tighten.ts` in Phase 3)
 - `src/lib/pdf/extract.ts` (+ `src/lib/job/fetch.ts` in Phase 3)
-- `src/templates/Classic.tsx` (print CSS lives in `lib/cv/page.ts` + the print route)
+- `src/lib/match/{score,parsability}.ts` and `src/lib/llm/analyze.ts` (Phase 4)
+- `src/templates/Classic.tsx` (+ `Sidebar.tsx`, `Modern.tsx` in Phase 5; print CSS lives in `lib/cv/page.ts` + the print route)
 - **Routes:**
   - `src/app/page.tsx` (Library) + `import-drop-zone.tsx`
   - `src/app/import/[id]/{page,import-review}.tsx`
@@ -479,6 +512,6 @@ Four phases: Phase 0 (mockups) is done, and Phases 1–3 are the build. Each bui
 ## Verification
 
 - **Unit (`bun test`):** the detector against 3–4 fixture CVs; redact → rehydrate round trip; the guard throws when a vault value is in the payload; store round trip (save → read → zod-valid) and the atomic write leaves no partial file; fabrication check cases.
-- **Privacy test:** a mock LLM provider records every request. Run import + tailor + tighten and assert that no vault value appears in any request.
+- **Privacy test:** a mock LLM provider records every request. Run import + analyze + tailor + tighten and assert that no vault value appears in any request.
 - **Diagrams:** both Mermaid blocks render without errors (GitHub preview or `bunx @mermaid-js/mermaid-cli`). At the end of each phase, check every module in `src/lib/**` and every schema in `schema.ts` against the diagram: each must appear, with no extras and no missing arrows.
-- **Manual end-to-end:** import a real CV → compare with the original and fix → export (one page, correct filename) → tailor with pasted job text → revert a field → export the variant. Then switch `.env` to Ollama and repeat the import.
+- **Manual end-to-end:** import a real CV → compare with the original and fix → export (one page, correct filename) → analyze a pasted job, tick a gap, tailor → check the score before → after and that the ticked skill isn't flagged → revert a field → export the variant in each template. Then switch `.env` to Ollama and repeat the import.

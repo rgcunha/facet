@@ -81,4 +81,4 @@ For each change or phase:
 
 ## Out of scope (don't add without asking)
 
-Settings page, multiple templates, keyword scores, per-change accept/reject UI, syncing variants with their base, cover letters, OCR, auth, hosting, database.
+Settings page, per-change accept/reject UI, syncing variants with their base, cover letters, OCR, auth, hosting, database.
