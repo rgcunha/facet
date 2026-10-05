@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { fetchJobAction, tailorAction } from "@/app/actions";
+import { analyzeAction, fetchJobAction, tailorAction } from "@/app/actions";
+import { plural } from "@/lib/cv/format";
+import type { Analysis } from "@/lib/cv/schema";
+import { MatchReport } from "./MatchReport";
 
 const LANGUAGES = [
   ["", "Same as the job"],
@@ -12,7 +15,10 @@ const LANGUAGES = [
   ["es", "Español"],
 ] as const;
 
-/** Paste a job description (or fetch it), then create a tailored variant of this CV. */
+/**
+ * Paste a job description (or fetch it), analyze how the CV matches it, confirm the gaps that are
+ * true, then create a tailored variant of this CV.
+ */
 export function TailorPanel({
   cvId,
   onClose,
@@ -30,16 +36,44 @@ export function TailorPanel({
   const [error, setError] = useState<string>();
   const [fetching, startFetch] = useTransition();
   const [tailoring, startTailor] = useTransition();
+  const [analyzing, startAnalyze] = useTransition();
+  const [report, setReport] = useState<Analysis>();
+  const [confirmed, setConfirmed] = useState<string[]>([]);
+  const busy = analyzing || tailoring;
+
+  // A report belongs to the job text it was made from.
+  const changeJobText = (text: string) => {
+    setJobText(text);
+    setReport(undefined);
+  };
 
   const fetchJob = () =>
     startFetch(async () => {
       setError(undefined);
       const result = await fetchJobAction(url);
       if ("error" in result) setError(result.error);
-      else setJobText(result.text);
+      else changeJobText(result.text);
     });
 
-  const tailor = () =>
+  const analyze = () =>
+    startAnalyze(async () => {
+      setError(undefined);
+      if (!(await saveFirst()))
+        return setError("Couldn’t save your latest edits; try again.");
+      const result = await analyzeAction(cvId, jobText);
+      if ("error" in result) return setError(result.error);
+      setReport(result.report);
+      setConfirmed([]);
+    });
+
+  const toggle = (name: string) =>
+    setConfirmed(
+      confirmed.includes(name)
+        ? confirmed.filter((n) => n !== name)
+        : [...confirmed, name],
+    );
+
+  const tailor = (analysis: Analysis) =>
     startTailor(async () => {
       setError(undefined);
       if (!(await saveFirst()))
@@ -49,6 +83,8 @@ export function TailorPanel({
         url,
         language,
         pages,
+        report: analysis,
+        confirmed,
       });
       if (result) setError(result.error);
     });
@@ -66,7 +102,7 @@ export function TailorPanel({
           type="button"
           className="btn-link"
           onClick={onClose}
-          disabled={tailoring}
+          disabled={busy}
         >
           Close
         </button>
@@ -75,10 +111,12 @@ export function TailorPanel({
       <label className="flex flex-col gap-1.5 font-semibold">
         Job description
         <textarea
-          rows={12}
+          rows={report ? 5 : 12}
           className="textarea text-sm leading-relaxed font-normal"
           value={jobText}
-          onChange={(e) => setJobText(e.target.value)}
+          onChange={(e) => changeJobText(e.target.value)}
+          // Locked while analyzing, so the report always belongs to the text on screen.
+          disabled={busy}
           placeholder="Paste the whole job posting here."
         />
         <span className="text-[13px] font-normal text-muted">
@@ -101,7 +139,7 @@ export function TailorPanel({
           type="button"
           className="btn-secondary"
           onClick={fetchJob}
-          disabled={!url || fetching}
+          disabled={!url || fetching || busy}
         >
           {fetching ? "Fetching…" : "Fetch"}
         </button>
@@ -144,22 +182,46 @@ export function TailorPanel({
         </p>
       )}
 
+      {report && (
+        <MatchReport report={report} confirmed={confirmed} onToggle={toggle} />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <p className="max-w-md text-[13px] text-muted">
           Sends the job text and your CV without contact details, with your
-          personal details masked. Nothing should be invented; anything new is
-          flagged for you.
+          personal details masked. The score is computed on your computer.
+          Nothing should be invented; anything new is flagged for you.
         </p>
-        <button
-          type="button"
-          className="btn-primary min-h-12 px-5"
-          onClick={tailor}
-          disabled={tailoring}
-        >
-          {tailoring
-            ? "Tailoring… (can take a minute)"
-            : "Create tailored variant →"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={
+              report ? "btn-secondary min-h-12" : "btn-primary min-h-12 px-5"
+            }
+            onClick={analyze}
+            disabled={busy}
+          >
+            {analyzing
+              ? "Analyzing…"
+              : report
+                ? "Analyze again"
+                : "Analyze match →"}
+          </button>
+          {report && (
+            <button
+              type="button"
+              className="btn-primary min-h-12 px-5"
+              onClick={() => tailor(report)}
+              disabled={busy}
+            >
+              {tailoring
+                ? "Tailoring… (can take a minute)"
+                : confirmed.length
+                  ? `Create tailored variant, adding ${plural(confirmed.length, "confirmed skill")} →`
+                  : "Create tailored variant →"}
+            </button>
+          )}
+        </div>
       </div>
     </section>
   );

@@ -1,5 +1,6 @@
 import { rm } from "node:fs/promises";
 import { emptyContent, shortId } from "@/lib/cv/empty";
+import { fold } from "@/lib/cv/format";
 import { type CvRecord, cvRecordSchema } from "@/lib/cv/schema";
 import {
   dataPath,
@@ -13,10 +14,7 @@ import { deleteSourcePdf } from "./sources";
 const cvFile = (id: string) => dataPath("cvs", `${id}.json`);
 
 const slug = (title: string) =>
-  title
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
+  fold(title)
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 40);

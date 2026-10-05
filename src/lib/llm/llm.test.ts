@@ -5,6 +5,7 @@ import { z } from "zod";
 import { emptyContent } from "@/lib/cv/empty";
 import { privateValuesOf } from "@/lib/privacy/values";
 import { modelContentSchema } from "./content";
+import { analyzeCv } from "./analyze";
 import { generateStructured } from "./generate";
 import { structureCv } from "./structure";
 import { tailorCv } from "./tailor";
@@ -144,13 +145,12 @@ test("tailoring masks the vault everywhere (job text included) and keeps known e
       ],
     },
     job: { title: "Platform Engineer", company: "Halden", language: "en" },
-    missingKeywords: ["PagerDuty"],
   });
 
   const result = await tailorCv(
     base,
     "We are hiring. Referrals to Alex Moreno at alex.moreno@example.com.",
-    { language: "", pages: 1 },
+    { language: "", pages: 1, report: { confirmed: [], suggestions: [] } },
     privateValues,
     model,
   );
@@ -161,7 +161,6 @@ test("tailoring masks the vault everywhere (job text included) and keeps known e
   expect(new Set(result.content.experience.map((e) => e.id)).size).toBe(3);
   expect(result.content.experience[2].id).not.toBe("made-up");
   expect(result.content.projects[0].link).toBe("github.com/alexmoreno");
-  expect(result.missingKeywords).toEqual(["PagerDuty"]);
 });
 
 test("a CV's own contact and vault are masked in tailoring, without being passed separately", async () => {
@@ -183,13 +182,12 @@ test("a CV's own contact and vault are masked in tailoring, without being passed
   const model = recordingModel({
     content: cv.content,
     job: { title: "Engineer", company: "Halden", language: "en" },
-    missingKeywords: [],
   });
 
   await tailorCv(
     cv.content,
     "Contact sam.rivera@example.org about this role. ".repeat(5),
-    { language: "", pages: 1 },
+    { language: "", pages: 1, report: { confirmed: [], suggestions: [] } },
     privateValuesOf(cv),
     model,
   );
@@ -216,4 +214,60 @@ test("the schema sent to the model requires every field, so none (like a job's r
   expect(json.properties.experience.items.required).toEqual(
     expect.arrayContaining(["role", "company", "start", "end", "highlights"]),
   );
+});
+
+test("analysis masks the CV's private values and returns the report", async () => {
+  const content = {
+    ...emptyContent(),
+    summary: "Alex Moreno runs Kubernetes at alex.moreno@example.com.",
+  };
+  const answer = {
+    title: "Platform Engineer",
+    yearsRequired: 5,
+    requirements: [
+      { name: "Kubernetes", synonyms: ["k8s"], priority: "must" },
+      { name: "Helm", synonyms: [], priority: "nice" },
+    ],
+    strengths: ["Runs Kubernetes"],
+    gaps: [{ name: "Helm", why: "Kubernetes deployments" }],
+    missing: [],
+    suggestions: ["Lead with {{NAME}}'s Kubernetes work"],
+  };
+  const model = recordingModel(answer);
+
+  const report = await analyzeCv(
+    content,
+    "We need Kubernetes and Helm. Ask Alex Moreno for details.",
+    privateValues,
+    model,
+  );
+
+  const sent = JSON.stringify(model.doGenerateCalls);
+  for (const { value } of privateValues) expect(sent).not.toContain(value);
+  expect(report.requirements).toHaveLength(2);
+  expect(report.suggestions[0]).toBe("Lead with Alex Moreno's Kubernetes work");
+});
+
+test("tailoring tells the model which skills the user confirmed", async () => {
+  const model = recordingModel({
+    content: emptyContent(),
+    job: { title: "", company: "", language: "en" },
+  });
+  await tailorCv(
+    emptyContent(),
+    "Job text",
+    {
+      language: "",
+      pages: 1,
+      report: {
+        confirmed: ["Helm"],
+        suggestions: ["Use Platform in the headline"],
+      },
+    },
+    [],
+    model,
+  );
+  const sent = JSON.stringify(model.doGenerateCalls);
+  expect(sent).toContain("Skills the candidate confirmed having: Helm.");
+  expect(sent).toContain("- Use Platform in the headline");
 });

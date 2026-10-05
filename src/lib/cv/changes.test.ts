@@ -172,3 +172,20 @@ describe("findFabrications", () => {
     expect(next.flags.map((f) => f.key)).toEqual(["skills.s"]);
   });
 });
+
+test("skills the user confirmed in the match report aren't flagged", () => {
+  const tailored: CvContent = {
+    ...base,
+    skills: [
+      {
+        id: "s",
+        group: "Platform",
+        items: ["Kubernetes", "Kafka", "Helm", "Terraform Cloud"],
+      },
+    ],
+  };
+  const { flags } = recordChanges(NO_CHANGES, base, tailored, base, {
+    knownSkills: ["Helm"],
+  });
+  expect(flags).toEqual([{ key: "skills.s", facts: ["Terraform Cloud"] }]);
+});

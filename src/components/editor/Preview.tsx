@@ -1,6 +1,13 @@
 "use client";
 
-import { memo, useDeferredValue, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  type ReactNode,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useWatch } from "react-hook-form";
 import { plural } from "@/lib/cv/format";
 import { PAGE, PAGE_CONTENT_HEIGHT_MM, PX_PER_MM } from "@/lib/cv/page";
@@ -24,17 +31,21 @@ const SHEET_STYLE = {
 
 /**
  * Live A4 preview, scaled to fit the pane, with a page-fit indicator and page-break guides.
- * A second tab compares with the original PDF (imported CV) or the base CV (tailored variant).
+ * A second tab compares with the original PDF (imported CV) or the base CV (tailored variant), and a
+ * variant also has a tab with its match report.
  */
 export function Preview({
   sourceUrl,
   base,
+  report,
   showSecond = false,
   onTighten,
   tightening = false,
 }: {
   sourceUrl?: string;
   base?: { contact: Contact; content: CvContent };
+  /** A tailored variant's match report. */
+  report?: ReactNode;
   showSecond?: boolean;
   /** Offered when the CV runs over its page target. */
   onTighten?: (overflowLines: number) => void;
@@ -43,7 +54,12 @@ export function Preview({
   const second = sourceUrl
     ? { label: "Original PDF" }
     : base && { label: "Base CV" };
-  const [tab, setTab] = useState<"preview" | "second">(
+  const tabs: { id: "preview" | "second" | "report"; label: string }[] = [
+    { id: "preview", label: "Preview" },
+    ...(second ? [{ id: "second" as const, label: second.label }] : []),
+    ...(report ? [{ id: "report" as const, label: "Match report" }] : []),
+  ];
+  const [tab, setTab] = useState<(typeof tabs)[number]["id"]>(
     second && showSecond ? "second" : "preview",
   );
   // Once opened, the second tab stays mounted (just hidden), e.g. so a PDF isn't re-fetched.
@@ -88,25 +104,25 @@ export function Preview({
       className="min-w-0 flex-[999_1_560px] overflow-hidden rounded-xl bg-preview"
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-line bg-white px-4 py-2.5">
-        {second ? (
+        {tabs.length > 1 ? (
           <div
             role="tablist"
             aria-label="Right pane"
             className="flex overflow-hidden rounded-lg border border-field"
           >
-            {(["preview", "second"] as const).map((t) => (
+            {tabs.map((t) => (
               <button
-                key={t}
+                key={t.id}
                 type="button"
                 role="tab"
-                aria-selected={tab === t}
+                aria-selected={tab === t.id}
                 onClick={() => {
-                  setTab(t);
-                  if (t === "second") setSecondOpened(true);
+                  setTab(t.id);
+                  if (t.id === "second") setSecondOpened(true);
                 }}
-                className={`min-h-[38px] px-3.5 ${tab === t ? "bg-ink font-semibold text-white" : "bg-white text-ink"}`}
+                className={`min-h-[38px] px-3.5 ${tab === t.id ? "bg-ink font-semibold text-white" : "bg-white text-ink"}`}
               >
-                {t === "preview" ? "Preview" : second.label}
+                {t.label}
               </button>
             ))}
           </div>
@@ -151,11 +167,12 @@ export function Preview({
           </div>
         </div>
       )}
-      {/* Behind the second tab the preview stays laid out (just invisible), so page fit is still measured. */}
+      {tab === "report" && <div className="p-6">{report}</div>}
+      {/* Behind the other tabs the preview stays laid out (just invisible), so page fit is still measured. */}
       <div
         ref={paneRef}
         className={
-          tab === "second" ? "invisible h-0 overflow-hidden px-6" : "p-6"
+          tab !== "preview" ? "invisible h-0 overflow-hidden px-6" : "p-6"
         }
       >
         <div

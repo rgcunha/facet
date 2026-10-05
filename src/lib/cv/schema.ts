@@ -81,14 +81,49 @@ export const privateValueSchema = z.object({
 export const cvIdSchema = z.string().regex(/^[a-z0-9-]{1,80}$/);
 const pagesSchema = z.union([z.literal(1), z.literal(2)]);
 
+/** A requirement of a job, with the other words a CV may use for it ("k8s" for Kubernetes). */
+const requirementSchema = z.object({
+  name: z.string(),
+  synonyms: z.array(z.string()),
+  priority: z.enum(["must", "nice"]),
+});
+
+/**
+ * How a CV matches a job, as analysis returns it. No defaults: every field is written by the model,
+ * and the model must see every field as required (see `required` in lib/llm/content.ts).
+ */
+export const analysisSchema = z.object({
+  title: z.string().describe("The job title, as the posting names it"),
+  yearsRequired: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .describe("Years of experience the posting asks for, or null"),
+  requirements: z.array(requirementSchema),
+  strengths: z.array(z.string()),
+  /** Requirements the CV suggests but doesn't show; the user confirms the true ones. */
+  gaps: z.array(z.object({ name: z.string(), why: z.string() })),
+  /** Requirements the CV gives no sign of. Never added. */
+  missing: z.array(z.string()),
+  suggestions: z.array(z.string()),
+});
+
+/** The analysis a variant was tailored from, with the gaps the user confirmed. */
+const matchReportSchema = analysisSchema.extend({
+  /** Tailoring may add these, and they aren't flagged as possible fabrications. */
+  confirmed: z.array(z.string()),
+  createdAt: z.iso.datetime(),
+});
+
 const jobSchema = z.object({
   title: text,
   company: text,
   url: text,
   text: text,
   language: text,
-  /** Requirements of the job that the CV doesn't show; the user adds them only if true. */
-  missingKeywords: texts,
+  /** The match report the variant was tailored from. */
+  report: matchReportSchema.nullable().default(null),
 });
 
 /**
@@ -151,3 +186,5 @@ export type PrivateValue = z.infer<typeof privateValueSchema>;
 export type ImportDraft = z.infer<typeof importDraftSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export type Changes = z.infer<typeof changesSchema>;
+export type Analysis = z.infer<typeof analysisSchema>;
+export type MatchReport = z.infer<typeof matchReportSchema>;

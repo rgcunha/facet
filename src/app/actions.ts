@@ -4,9 +4,15 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { UNTITLED_CV } from "@/lib/cv/empty";
-import { editorValuesSchema, privateValueSchema } from "@/lib/cv/schema";
+import {
+  type Analysis,
+  analysisSchema,
+  editorValuesSchema,
+  privateValueSchema,
+} from "@/lib/cv/schema";
 import { NO_CHANGES, recordChanges } from "@/lib/cv/changes";
 import { fetchJobText } from "@/lib/job/fetch";
+import { analyzeCv } from "@/lib/llm/analyze";
 import { structureCv } from "@/lib/llm/structure";
 import { tailorCv } from "@/lib/llm/tailor";
 import { tightenCv } from "@/lib/llm/tighten";
@@ -107,22 +113,44 @@ export async function cancelImportAction(importId: string) {
   redirect("/");
 }
 
+const jobTextSchema = z
+  .string()
+  .trim()
+  .min(
+    200,
+    "Paste the whole job description (a few paragraphs), not just the title.",
+  );
+
+/** Compares a CV with a job posting. The report is returned, not saved: it is kept only on the variant it produces. */
+export async function analyzeAction(
+  cvId: string,
+  jobText: unknown,
+): Promise<{ report: Analysis } | { error: string }> {
+  const parsed = jobTextSchema.safeParse(jobText);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const cv = await getCv(cvId);
+  if (!cv) return { error: "This CV no longer exists." };
+  try {
+    return {
+      report: await analyzeCv(cv.content, parsed.data, privateValuesOf(cv)),
+    };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
 const tailorInputSchema = z.object({
-  jobText: z
-    .string()
-    .trim()
-    .min(
-      200,
-      "Paste the whole job description (a few paragraphs), not just the title.",
-    ),
+  jobText: jobTextSchema,
   url: z.string().trim(),
   language: z.string(),
   pages: z.union([z.literal(1), z.literal(2)]),
+  report: analysisSchema,
+  confirmed: z.array(z.string()),
 });
 
 /**
- * Creates a variant of a CV tailored to a job posting and opens it. Only the CV content and the
- * job text are sent, masked with the vault; changes and possible fabrications are recorded locally.
+ * Creates a variant of a CV tailored to a job posting from its match report, and opens it. Only the
+ * CV content and the job text are sent, masked; changes and possible fabrications are recorded locally.
  */
 export async function tailorAction(
   cvId: string,
@@ -131,6 +159,14 @@ export async function tailorAction(
   const parsed = tailorInputSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { jobText, url, language, pages } = parsed.data;
+  // Input hygiene: confirmed names must be gaps of the report (both come from this user's own browser).
+  const report = {
+    ...parsed.data.report,
+    confirmed: parsed.data.confirmed.filter((name) =>
+      parsed.data.report.gaps.some((g) => g.name === name),
+    ),
+    createdAt: new Date().toISOString(),
+  };
   const cv = await getCv(cvId);
   if (!cv) return { error: "This CV no longer exists." };
 
@@ -142,7 +178,7 @@ export async function tailorAction(
     const tailored = await tailorCv(
       cv.content,
       jobText,
-      { language, pages },
+      { language, pages, report },
       privateValuesOf(cv),
     );
     const variantLanguage = language || tailored.job.language;
@@ -158,7 +194,7 @@ export async function tailorAction(
         ...tailored.job,
         url,
         text: jobText,
-        missingKeywords: tailored.missingKeywords,
+        report,
       },
       changes: recordChanges(
         NO_CHANGES,
@@ -167,6 +203,7 @@ export async function tailorAction(
         base.content,
         {
           translated: variantLanguage !== base.language,
+          knownSkills: report.confirmed,
         },
       ),
     });

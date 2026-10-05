@@ -18,7 +18,8 @@
   - Job titles are no longer dropped on import: the schema sent to the model marks every field required.
   - The "Move to…" menu on highlights was removed.
   - Real model calls run through OpenRouter (`deepseek/deepseek-v4.1-flash`).
-- **Next:** Phase 4 (match report), then Phase 5 (templates). Mockups: the v3 row on the canvas.
+- **Phase 4 (match report):** done (2026-10-06). `/simplify` and `/code-review` applied; the 3 review findings were a stale report after editing the job text mid-analysis, "Atualmente"/"Actualidad" not read as present, and year-first dates ("2019-03") losing their month. `bun test` passes 48 tests; analyze → confirm → tailor ran end to end against the real model with a made-up CV. The "single-column template" readability check moves to Phase 5.
+- **Next:** Phase 5 (templates). Mockups: the v3 row on the canvas.
 
 ## Context
 
@@ -459,7 +460,7 @@ Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each buil
 
 **Phase 3: Tailor.** ✅ Done (2026-10-05). Tailor panel (paste / fetch, language, length) · `tailorCv` · variant creation with `changes.original` · highlights + Revert · fabrication check · missing keywords · Tighten to fit · diagrams updated.
 
-**Phase 4: Match report and tailoring from confirmed gaps.** Mockups: v3 "Tailor panel: match report + confirm gaps" and "Variant: score before → after".
+**Phase 4: Match report and tailoring from confirmed gaps.** ✅ Done (2026-10-06). Mockups: v3 "Tailor panel: match report + confirm gaps" and "Variant: score before → after".
 
 - **Flow:** in the Tailor panel, paste the job → **Analyze** → the report shows the score, strengths, gaps, missing skills and suggestions → tick the gaps that are true → **Create tailored variant**. The variant opens with the score before → after and a **Match report** tab beside Preview and Base CV.
 - **Schema** (`schema.ts`):
@@ -480,6 +481,7 @@ Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each buil
 
 **Phase 5: Templates.** Mockup: v3 "Template picker".
 
+- The ATS readability check gains "single-column template" (fails for Sidebar).
 - `template: classic | sidebar | modern` on each CV (default `classic`), picked in the preview toolbar, saved with the CV and used by the print route. Variants copy it from their base.
 - `src/templates/Sidebar.tsx`: bold uppercase name, contact on one line, a narrow left column (education, skills, languages) and experience on the right as `COMPANY | Role`.
 - `src/templates/Modern.tsx`: one column, sans-serif, centered header in an accent color, skills right after the summary, role first then company, location and dates.

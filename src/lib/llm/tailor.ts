@@ -1,7 +1,7 @@
 import type { LanguageModel } from "ai";
 import { z } from "zod";
 import { plural } from "@/lib/cv/format";
-import type { CvContent, PrivateValue } from "@/lib/cv/schema";
+import type { CvContent, MatchReport, PrivateValue } from "@/lib/cv/schema";
 import {
   idsOf,
   modelContentSchema,
@@ -21,9 +21,6 @@ const tailoredSchema = z.object({
         "ISO 639-1 code of the job posting's language, e.g. en, de, pt",
       ),
   }),
-  missingKeywords: z
-    .array(z.string())
-    .describe("Important requirements of the job that the CV does not show"),
 });
 
 const SYSTEM = `You tailor a CV to one job posting. You return the complete CV content, adapted.
@@ -37,7 +34,7 @@ You may:
 You must never:
 - add employers, job titles, dates, degrees, schools, certifications, skills, tools, technologies, numbers or achievements that the CV doesn't already contain;
 - change or translate company names, school names or dates (degrees and job titles may be translated);
-- claim a requirement the candidate doesn't show. List such requirements in missingKeywords instead.
+- claim a requirement the candidate doesn't show. The only exception is the skills the candidate confirmed: you may add those to skills and mention them where they fit.
 
 Entry ids: keep each entry's "id" exactly as given; leave it out only for an entry you add by splitting an existing one.
 ${PLACEHOLDER_RULE}
@@ -48,7 +45,11 @@ Length: one page holds roughly 350–450 words of CV text; two pages about twice
 export async function tailorCv(
   content: CvContent,
   jobText: string,
-  options: { language: string; pages: 1 | 2 },
+  options: {
+    language: string;
+    pages: 1 | 2;
+    report: Pick<MatchReport, "confirmed" | "suggestions">;
+  },
   privateValues: PrivateValue[],
   model?: LanguageModel,
 ) {
@@ -58,6 +59,8 @@ export async function tailorCv(
     prompt: [
       `Target length: ${plural(options.pages, "page")}.`,
       `Output language: ${options.language || "the language of the job posting"}.`,
+      `Skills the candidate confirmed having: ${options.report.confirmed.join(", ") || "none"}.`,
+      `Suggestions to apply where they stay true:\n${options.report.suggestions.map((s) => `- ${s}`).join("\n") || "none"}`,
       `Job posting:\n\n${jobText}`,
       `CV (JSON):\n\n${JSON.stringify(content)}`,
     ].join("\n\n"),

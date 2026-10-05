@@ -6,12 +6,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { joinFilled, range } from "@/lib/cv/format";
 import type { Contact, CvContent, EditorValues, Job } from "@/lib/cv/schema";
 import { tightenAction } from "@/app/actions";
-import {
-  ChangesBanner,
-  FabricationWarnings,
-  FieldChange,
-  MissingKeywords,
-} from "./changes";
+import { ChangesBanner, FabricationWarnings, FieldChange } from "./changes";
 import {
   Card,
   CommaListField,
@@ -20,6 +15,7 @@ import {
   StringListField,
   TextField,
 } from "./fields";
+import { LiveScoreChange, MatchReport, useBaseScore } from "./MatchReport";
 import { Preview } from "./Preview";
 import { TailorPanel } from "./TailorPanel";
 import { type SaveStatus, useAutosave } from "./use-autosave";
@@ -56,6 +52,7 @@ export function Editor({
   const [tightenError, setTightenError] = useState<string>();
   const [tightening, startTighten] = useTransition();
   const { status, flush } = useAutosave(form, id);
+  const baseScore = useBaseScore(base, job?.report ?? undefined);
 
   // Saved first, so the model shortens what is on screen; the page then reloads with the result.
   const tighten = (overflowLines: number) =>
@@ -93,6 +90,12 @@ export function Editor({
               disabled={tightening}
             />
           </label>
+          {job?.report && (
+            <span className="flex items-center gap-2 text-sm">
+              <span className="text-[13px] text-muted">Match</span>
+              <LiveScoreChange report={job.report} before={baseScore} />
+            </span>
+          )}
           <span
             role="status"
             className={`text-[13px] ${status === "error" ? "text-danger" : "text-muted"}`}
@@ -174,15 +177,7 @@ export function Editor({
             disabled={tightening}
             className="flex min-w-0 flex-col gap-3.5 disabled:opacity-60"
           >
-            <MissingKeywords job={job} />
-            <Card
-              title="Contact"
-              aside={
-                <span className="rounded-full bg-ok-soft px-2 py-0.5 text-xs font-semibold text-ok">
-                  Shared by all CVs
-                </span>
-              }
-            >
+            <Card title="Contact">
               <Grid>
                 <TextField name="contact.name" label="Full name" />
                 <TextField name="contact.email" label="Email" />
@@ -335,6 +330,15 @@ export function Editor({
           <Preview
             sourceUrl={sourceUrl}
             base={base}
+            report={
+              job?.report && (
+                <MatchReport
+                  report={job.report}
+                  confirmed={job.report.confirmed}
+                  before={baseScore}
+                />
+              )
+            }
             showSecond={justImported}
             onTighten={tighten}
             tightening={tightening}

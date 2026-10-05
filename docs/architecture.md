@@ -17,6 +17,7 @@ Arrows mean:
 - `-->`: uses / calls
 - `..>`: depends on loosely (reads/renders)
 - `..|>`: implements
+- `--|>`: extends
 
 ## 1. Data model
 
@@ -68,7 +69,27 @@ classDiagram
   class Job {
     <<schema>>
     +title, company, url, text, language
-    +missingKeywords: string[]
+    +report: MatchReport or null
+  }
+  class Analysis {
+    <<schema>>
+    +title: string
+    +yearsRequired: number or null
+    +requirements: Requirement[]
+    +strengths, missing, suggestions: string[]
+    +gaps: name and why
+  }
+  class MatchReport {
+    <<schema>>
+    Analysis plus
+    +confirmed: string[]
+    +createdAt: datetime
+  }
+  class Requirement {
+    <<schema>>
+    +name: string
+    +synonyms: string[]
+    +priority: must or nice
   }
   class Changes {
     <<schema>>
@@ -138,6 +159,9 @@ classDiagram
   CvRecord --> CvKind
   CvRecord "1" *-- "1" CvContent
   CvRecord "1" *-- "0..1" Job
+  Job "1" *-- "0..1" MatchReport
+  MatchReport --|> Analysis : extends
+  Analysis "1" *-- "0..*" Requirement
   CvRecord "1" *-- "1" Changes
   Changes "1" *-- "0..*" Flag
   CvContent "1" *-- "0..*" Experience
@@ -200,11 +224,16 @@ classDiagram
   class TailorPanel {
     <<component>>
     job text, fetch, language, length
+    Analyze, confirm gaps, Create variant
+  }
+  class MatchReportView {
+    <<component>>
+    MatchReport, LiveScoreChange, useBaseScore
   }
   class ChangeControls {
     <<component>>
     useChanges, ChangeRow, ChangesBanner
-    FabricationWarnings, MissingKeywords
+    FabricationWarnings
     FieldChange, EntryChange, SectionChanges
   }
   class Fields {
@@ -215,7 +244,7 @@ classDiagram
   class Preview {
     <<component>>
     page-fit indicator, Tighten to fit
-    Preview / Original PDF or Base CV tabs
+    Preview / Original PDF or Base CV / Match report tabs
   }
   class Classic {
     <<component>>
@@ -237,15 +266,16 @@ classDiagram
     +uploadPdfAction(file)
     +parseImportAction(importId, masked)
     +cancelImportAction(importId)
-    +tailorAction(cvId, job)
+    +analyzeAction(cvId, jobText)
+    +tailorAction(cvId, job, report, confirmed)
     +tightenAction(cvId, overflowLines)
     +fetchJobAction(url)
   }
   class Changes {
     <<module>>
-    +recordChanges(previous, before, after, base, translated)
+    +recordChanges(previous, before, after, base, translated, knownSkills)
     +diffContent(before, after)
-    +findFabrications(known, variant, original, translated)
+    +findFabrications(known, variant, original, translated, knownSkills)
     +revertChange(content, changes, key)
     +keepChange(changes, key)
     +revertAll(content, changes)
@@ -286,9 +316,25 @@ classDiagram
     <<module>>
     +structureCv(text, privateValues)
   }
+  class AnalyzeCv {
+    <<module>>
+    +analyzeCv(content, jobText, privateValues)
+  }
   class TailorCv {
     <<module>>
-    +tailorCv(content, jobText, options, privateValues)
+    +tailorCv(content, jobText, options with report, privateValues)
+  }
+  class MatchScore {
+    <<module>>
+    +scoreCv(cv, report)
+  }
+  class Parsability {
+    <<module>>
+    +readabilityChecks(cv)
+  }
+  class Dates {
+    <<module>>
+    +parseDate(text)
   }
   class TightenCv {
     <<module>>
@@ -362,6 +408,7 @@ classDiagram
     +range(start, end)
     +visible(entries)
     +plural(n, word)
+    +fold(s)
     +normalize(s)
     +entryValues(entry)
   }
@@ -393,7 +440,13 @@ classDiagram
   Fields --> ChangeControls : entry and section notes
   ChangeControls --> Changes : revert, keep
   Fields --> Changes : changeKind
-  TailorPanel --> ServerActions : tailorAction, fetchJobAction
+  TailorPanel --> ServerActions : analyzeAction, tailorAction, fetchJobAction
+  TailorPanel --> MatchReportView : with gap checkboxes
+  Editor --> MatchReportView : score in header, report tab
+  MatchReportView --> MatchScore : live, in the browser
+  MatchScore --> Parsability
+  MatchScore --> Dates
+  Parsability --> Dates
   Editor --> useAutosave
   Editor --> Format : entry summaries
   Fields --> EmptyValues : blankItem
@@ -407,6 +460,7 @@ classDiagram
   ServerActions --> PdfExtractor
   ServerActions --> PiiDetector
   ServerActions --> StructureCv
+  ServerActions --> AnalyzeCv
   ServerActions --> TailorCv
   ServerActions --> TightenCv
   ServerActions --> JobFetcher
@@ -416,6 +470,7 @@ classDiagram
   ServerActions --> PrivateValues : contactFromValues, privateValuesOf
 
   StructureCv --> LlmGenerate
+  AnalyzeCv --> LlmGenerate
   TailorCv --> LlmGenerate
   TightenCv --> LlmGenerate
   StructureCv --> LlmContent
@@ -444,6 +499,10 @@ classDiagram
   1. `uploadPdfAction` reads the PDF locally (`PdfExtractor`, pdf.js) and finds personal details (`PiiDetector`, regexes and font size, no network). It stores an `ImportDraft`.
   2. `parseImportAction` sends the masked text to the model (`StructureCv`) and creates the CV. The new CV's `Contact` comes from the values the user kept masked (`contactFromValues`), and those values also become its vault.
   3. **Cancel import** discards the draft and its PDF. Leftovers from imports that were never parsed (e.g. the tab was closed) are discarded at the next upload, so unmasked CV text doesn't pile up in `data/imports/`.
+- **Tailoring starts with a match report.**
+  - `analyzeAction` sends the CV content and the job text, masked like tailoring, and returns the report: the job's requirements (must or nice, with synonyms), title and years asked, plus strengths, gaps (skills the CV suggests but doesn't show), missing skills and suggestions. It isn't saved; it lives in the Tailor panel until a variant is created from it.
+  - The user ticks the gaps that are true. `tailorAction` passes the report and those confirmed skills to `tailorCv`, stores the report (with `confirmed` and `createdAt`) on the variant's `Job`, and `recordChanges` passes the confirmed skills to `findFabrications` as `knownSkills`, so they aren't flagged.
+  - **The score is computed locally** (`MatchScore.scoreCv`, no model call), so it updates as the user edits: requirements found as whole words (or a synonym) in the CV text, title match, years of experience (overlapping roles counted once) and four ATS readability checks (`Parsability`). Weights: must-haves 50, title 20, nice-to-haves 15, readability 10, years 5; parts that don't apply are left out. A variant shows its base CV's score → its own.
 - **Tailoring creates a variant.**
   - `tailorAction` sends the CV content (never `Contact`) and the job text. Both are masked with that CV's private values (`privateValuesOf`), so personal details in a pasted posting are masked too. The variant copies the CV's contact and vault.
   - Entry ids are kept, and `withIds` replaces any id the model invents or repeats.
@@ -457,4 +516,4 @@ classDiagram
 - **Personal data:**
   - **Read or written by:** `CvStore` (contact + vault, per CV), `ImportStore` (draft text), `SourceStore` (original PDFs) and the import actions.
   - **Shown by:** `Classic`, the editor's Contact card and `ImportReview`.
-  - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and tailoring and tightening (that CV's contact and vault).
+  - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and analysis, tailoring and tightening (that CV's contact and vault).

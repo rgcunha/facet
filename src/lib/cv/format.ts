@@ -8,6 +8,10 @@ export const joinFilled = (values: string[], separator = " · ") =>
 export const range = (start: string, end: string) =>
   joinFilled([start, end], " – ");
 
+/** Lower case without accents ("Março" → "marco"), for matching words written either way. */
+export const fold = (s: string) =>
+  s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+
 /** For comparing values typed or extracted differently: case and whitespace don't count. */
 export const normalize = (s: string) =>
   s.trim().toLowerCase().replace(/\s+/g, " ");

@@ -151,28 +151,6 @@ export function FabricationWarnings() {
   );
 }
 
-export function MissingKeywords({ job }: { job: Job | null }) {
-  if (!job?.missingKeywords.length) return null;
-  return (
-    <section className="card flex flex-col gap-2 px-5 py-4">
-      <h2 className="text-base font-bold">Not in your CV</h2>
-      <ul className="flex flex-wrap gap-1.5">
-        {job.missingKeywords.map((k) => (
-          <li
-            key={k}
-            className="rounded-full border border-dashed border-muted px-2.5 py-0.5 text-[13px] text-subtle"
-          >
-            {k}
-          </li>
-        ))}
-      </ul>
-      <p className="text-[13px] text-muted">
-        The job asks for these. Add them yourself only if they’re true.
-      </p>
-    </section>
-  );
-}
-
 /** "Was: …" under the headline or the summary. */
 export function FieldChange({ field }: { field: "headline" | "summary" }) {
   const { original } = useChanges();

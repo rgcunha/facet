@@ -85,14 +85,15 @@ const factValues = (entry: Entry, field: string) =>
 
 /**
  * Local check (no LLM): facts in changed or added entries that appear in none of the `known`
- * versions (the base CV, and what the user had before this round, including anything they kept).
+ * versions (the base CV, and what the user had before this round, including anything they kept)
+ * and not among `knownSkills` (skills the user confirmed in the match report).
  * Each flag points at the change it belongs to, so the editor can offer Revert or Keep.
  */
 export function findFabrications(
   known: CvContent[],
   variant: CvContent,
   original: Original,
-  { translated = false } = {},
+  { translated = false, knownSkills = [] as string[] } = {},
 ): Changes["flags"] {
   const flags: Changes["flags"] = [];
   for (const [section, allFields] of Object.entries(FACT_FIELDS) as [
@@ -105,11 +106,12 @@ export function findFabrications(
     const seen = new Map(
       fields.map((f) => [
         f,
-        new Set(
-          known.flatMap((c) =>
+        new Set([
+          ...known.flatMap((c) =>
             entries(c, section).flatMap((e) => factValues(e, f).map(normalize)),
           ),
-        ),
+          ...(section === "skills" ? knownSkills.map(normalize) : []),
+        ]),
       ]),
     );
     for (const entry of entries(variant, section)) {
@@ -128,18 +130,20 @@ export function findFabrications(
  * Adds what `after` changed (compared with `before`) to the tracked changes. Earlier originals win,
  * so after several rounds (tailor, then tighten) Revert still goes back to the earliest version.
  * Possible fabrications: facts in neither the base CV nor `before`, so anything the user kept
- * stays kept. When `after` is in another language than the base, only language-neutral facts count.
+ * stays kept, and skills the user confirmed. When `after` is in another language than the base, only
+ * language-neutral facts count.
  */
 export function recordChanges(
   previous: Changes,
   before: CvContent,
   after: CvContent,
   base: CvContent,
-  { translated = false } = {},
+  { translated = false, knownSkills = [] as string[] } = {},
 ): Changes {
   const added = diffContent(before, after);
   const flags = findFabrications([base, before], after, added, {
     translated,
+    knownSkills,
   }).filter((f) => !previous.flags.some((g) => g.key === f.key));
   return {
     original: { ...added, ...previous.original },
