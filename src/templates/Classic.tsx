@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { filled, joinFilled, range, visible } from "@/lib/cv/format";
-import type { Contact, CvContent } from "@/lib/cv/schema";
+import { filled, joinFilled, range } from "@/lib/cv/format";
+import { Bullets, languagesLine, printable, type TemplateProps } from "./parts";
 
 function Section({
   title,
@@ -42,27 +42,20 @@ function Entry({
   );
 }
 
-/** The one CV template. Pure markup, so the editor preview and the print route render exactly the same thing. */
-export function Classic({
-  contact,
-  content,
-}: {
-  contact: Contact;
-  content: CvContent;
-}) {
-  const contactLine = filled([
-    contact.location,
-    contact.phone,
-    contact.email,
-    ...contact.links,
-    contact.dateOfBirth,
-  ]);
-  // Entries added in the editor but left empty must not print headings or take space.
-  const experience = visible(content.experience);
-  const education = visible(content.education);
-  const projects = visible(content.projects);
-  const languages = visible(content.languages);
-  const skills = content.skills.filter((s) => filled(s.items).length);
+/**
+ * Serif, one column. Like every template, pure markup, so the editor preview and the print route
+ * render exactly the same thing.
+ */
+export function Classic({ contact, content }: TemplateProps) {
+  const {
+    contactItems,
+    experience,
+    education,
+    projects,
+    languages,
+    skills,
+    extras,
+  } = printable(contact, content);
 
   return (
     <article className="font-serif text-[10pt] leading-[1.45] text-[#1a1a1a]">
@@ -73,9 +66,9 @@ export function Classic({
         {content.headline && (
           <p className="text-[12pt] text-[#3a3a3a]">{content.headline}</p>
         )}
-        {contactLine.length > 0 && (
+        {contactItems.length > 0 && (
           <p className="mt-[1.5mm] font-sans text-[8.5pt] text-[#4a4a4a]">
-            {contactLine.join(" · ")}
+            {contactItems.join(" · ")}
           </p>
         )}
       </header>
@@ -92,11 +85,7 @@ export function Classic({
             when={range(e.start, e.end)}
           >
             {e.location && <div className="text-[#4a4a4a]">{e.location}</div>}
-            <ul className="mt-[0.8mm] list-disc pl-[4.5mm]">
-              {filled(e.highlights).map((h, i) => (
-                <li key={i}>{h}</li>
-              ))}
-            </ul>
+            <Bullets items={e.highlights} className="mt-[0.8mm] pl-[4.5mm]" />
           </Entry>
         ))}
       </Section>
@@ -133,26 +122,12 @@ export function Classic({
       </Section>
 
       <Section title="Languages" show={languages.length > 0}>
-        <p>
-          {joinFilled(
-            languages.map((l) =>
-              joinFilled([l.name, l.level && `(${l.level})`], " "),
-            ),
-          )}
-        </p>
+        <p>{languagesLine(languages)}</p>
       </Section>
 
-      {content.extras.map((x) => (
-        <Section
-          key={x.id}
-          title={x.title || "Other"}
-          show={filled(x.items).length > 0}
-        >
-          <ul className="list-disc pl-[4.5mm]">
-            {filled(x.items).map((item, i) => (
-              <li key={i}>{item}</li>
-            ))}
-          </ul>
+      {extras.map((x) => (
+        <Section key={x.id} title={x.title || "Other"} show>
+          <Bullets items={x.items} className="pl-[4.5mm]" />
         </Section>
       ))}
     </article>

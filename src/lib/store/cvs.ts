@@ -66,6 +66,7 @@ type CvInit = Partial<
     | "sourcePdf"
     | "language"
     | "pages"
+    | "template"
     | "contact"
     | "vault"
     | "content"

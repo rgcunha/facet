@@ -21,6 +21,9 @@
   --color-mask-ink: #5a3b00;
   --font-sans: var(--font-instrument-sans), system-ui, sans-serif;
   --font-serif: var(--font-source-serif), Georgia, serif;
+  --font-montserrat: var(--font-montserrat-face), Arial, sans-serif;
+  --font-quicksand: var(--font-quicksand-face), Arial, sans-serif;
+  --font-plex: var(--font-ibm-plex), Arial, sans-serif;
 }
 
 @layer base {

@@ -78,6 +78,9 @@ export const privateValueSchema = z.object({
   value: z.string().min(1),
 });
 
+export const TEMPLATE_IDS = ["classic", "sidebar", "modern"] as const;
+const templateSchema = z.enum(TEMPLATE_IDS);
+
 export const cvIdSchema = z.string().regex(/^[a-z0-9-]{1,80}$/);
 const pagesSchema = z.union([z.literal(1), z.literal(2)]);
 
@@ -146,6 +149,7 @@ export const cvRecordSchema = z.object({
   sourcePdf: cvIdSchema.nullable().default(null),
   language: z.string(),
   pages: pagesSchema,
+  template: templateSchema.default("classic"),
   /** This CV's own contact details. Never part of `content`, so never sent to an LLM. */
   contact: contactSchema.prefault({}),
   /** Values masked when this CV was imported (custom masks, extra emails…); see `privateValuesOf`. */
@@ -173,12 +177,14 @@ export const importDraftSchema = z.object({
 export const editorValuesSchema = z.object({
   title: z.string(),
   pages: pagesSchema,
+  template: templateSchema,
   contact: contactSchema,
   content: cvContentSchema,
   changes: changesSchema,
 });
 
 export type Contact = z.infer<typeof contactSchema>;
+export type TemplateId = z.infer<typeof templateSchema>;
 export type CvContent = z.infer<typeof cvContentSchema>;
 export type CvRecord = z.infer<typeof cvRecordSchema>;
 export type EditorValues = z.infer<typeof editorValuesSchema>;
@@ -188,3 +194,5 @@ export type Job = z.infer<typeof jobSchema>;
 export type Changes = z.infer<typeof changesSchema>;
 export type Analysis = z.infer<typeof analysisSchema>;
 export type MatchReport = z.infer<typeof matchReportSchema>;
+/** A CV as templates render it and the match score reads it. */
+export type CvView = Pick<EditorValues, "contact" | "content" | "template">;

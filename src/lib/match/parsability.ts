@@ -1,15 +1,10 @@
 import { filled, visible } from "@/lib/cv/format";
-import type { Contact, CvContent } from "@/lib/cv/schema";
+import type { CvView } from "@/lib/cv/schema";
+import { TEMPLATE_INFO } from "@/lib/cv/templates";
 import { parseDate } from "./dates";
 
 /** What an applicant tracking system needs to read a CV into its fields, as pass/fail checks. */
-export function readabilityChecks({
-  contact,
-  content,
-}: {
-  contact: Contact;
-  content: CvContent;
-}) {
+export function readabilityChecks({ contact, content, template }: CvView) {
   const roles = visible(content.experience);
   return [
     {
@@ -25,6 +20,10 @@ export function readabilityChecks({
     {
       label: "Every role has a start date an ATS can read",
       pass: roles.every((r) => parseDate(r.start) !== null),
+    },
+    {
+      label: "One-column template",
+      pass: TEMPLATE_INFO[template].singleColumn,
     },
     {
       label: "Skills are listed",

@@ -2,12 +2,7 @@
 
 import { useDeferredValue, useId, useMemo } from "react";
 import { useWatch } from "react-hook-form";
-import type {
-  Analysis,
-  Contact,
-  CvContent,
-  EditorValues,
-} from "@/lib/cv/schema";
+import type { Analysis, CvView, EditorValues } from "@/lib/cv/schema";
 import { type MatchScore, scoreCv } from "@/lib/match/score";
 
 /** The score of what is in the form now, recomputed as the user edits. */
@@ -18,7 +13,7 @@ function useLiveScore(report: Analysis) {
 
 /** A variant's base CV scored against the variant's job: the "before" of before → after. */
 export function useBaseScore(
-  base: { contact: Contact; content: CvContent } | undefined,
+  base: CvView | undefined,
   report: Analysis | undefined,
 ) {
   return useMemo(

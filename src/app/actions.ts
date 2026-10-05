@@ -11,6 +11,7 @@ import {
   privateValueSchema,
 } from "@/lib/cv/schema";
 import { NO_CHANGES, recordChanges } from "@/lib/cv/changes";
+import { TEMPLATE_INFO } from "@/lib/cv/templates";
 import { fetchJobText } from "@/lib/job/fetch";
 import { analyzeCv } from "@/lib/llm/analyze";
 import { structureCv } from "@/lib/llm/structure";
@@ -187,6 +188,7 @@ export async function tailorAction(
       baseId: found?.id ?? cv.baseId,
       language: variantLanguage,
       pages,
+      template: cv.template,
       contact: cv.contact,
       vault: cv.vault,
       content: tailored.content,
@@ -223,11 +225,13 @@ export async function tightenAction(
   if (!cv) return { error: "This CV no longer exists." };
   try {
     const base = (await getBase(cv)) ?? cv; // the base was deleted: judge against this CV
-    const content = await tightenCv(
-      cv.content,
-      Math.max(1, Math.round(overflowLines)),
-      privateValuesOf(cv),
+    // Aim a little over the overflow, so the result really fits.
+    const words = Math.ceil(
+      Math.max(1, overflowLines) *
+        TEMPLATE_INFO[cv.template].wordsPerLine *
+        1.2,
     );
+    const content = await tightenCv(cv.content, words, privateValuesOf(cv));
     // The editor is locked while tightening; still, never overwrite a save made during the call.
     if ((await getCv(cvId))?.updatedAt !== cv.updatedAt)
       return {

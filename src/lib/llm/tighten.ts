@@ -16,18 +16,17 @@ const SYSTEM = `You shorten a CV so it fits its page limit. You return the compl
 - Keep each entry's "id" exactly as given.
 ${PLACEHOLDER_RULE}`;
 
-/** Shortens a CV by about `overflowLines` lines of the template. Private values (the vault) are masked. */
+/** Shortens a CV by about `words` words. Private values (the vault) are masked. */
 export async function tightenCv(
   content: CvContent,
-  overflowLines: number,
+  words: number,
   privateValues: PrivateValue[],
   model?: LanguageModel,
 ): Promise<CvContent> {
   const result = await generateStructured({
     schema: modelContentSchema("keep"),
     system: SYSTEM,
-    // A template line holds about 12 words; aim a little lower so the result really fits.
-    prompt: `The CV runs ${overflowLines} lines over its page limit: remove about ${Math.ceil(overflowLines * 12 * 1.2)} words.\n\nCV (JSON):\n\n${JSON.stringify(content)}`,
+    prompt: `The CV runs over its page limit: remove about ${words} words.\n\nCV (JSON):\n\n${JSON.stringify(content)}`,
     privateValues,
     model,
   });

@@ -58,6 +58,7 @@ classDiagram
     +sourcePdf: string or null
     +language: string
     +pages: 1 or 2
+    +template: classic, sidebar or modern
     +contact: Contact
     +vault: PrivateValue[]
     +content: CvContent
@@ -148,6 +149,7 @@ classDiagram
     <<schema>>
     +title: string
     +pages: 1 or 2
+    +template: classic, sidebar or modern
     +contact: Contact
     +content: CvContent
     +changes: Changes
@@ -246,9 +248,15 @@ classDiagram
     page-fit indicator, Tighten to fit
     Preview / Original PDF or Base CV / Match report tabs
   }
-  class Classic {
+  class Templates {
     <<component>>
+    TEMPLATES: Classic, Sidebar, Modern
     +render(contact, content)
+    parts: printable, Bullets, languagesLine
+  }
+  class TemplateInfo {
+    <<module>>
+    TEMPLATE_INFO: name, singleColumn, wordsPerLine
   }
   class AutoPrint
   <<component>> AutoPrint
@@ -330,7 +338,7 @@ classDiagram
   }
   class Parsability {
     <<module>>
-    +readabilityChecks(cv)
+    +readabilityChecks(cv with template)
   }
   class Dates {
     <<module>>
@@ -338,7 +346,7 @@ classDiagram
   }
   class TightenCv {
     <<module>>
-    +tightenCv(content, overflowLines, privateValues)
+    +tightenCv(content, words, privateValues)
   }
   class LlmContent {
     <<module>>
@@ -426,7 +434,7 @@ classDiagram
   EditorPage --> CvStore : getCv
   EditorPage --> Editor
   PrintPage --> CvStore
-  PrintPage --> Classic
+  PrintPage --> Templates : the CV's template
   PrintPage --> AutoPrint
   PrintPage --> PageGeometry
   SourceRoute --> CvStore
@@ -450,9 +458,12 @@ classDiagram
   Editor --> useAutosave
   Editor --> Format : entry summaries
   Fields --> EmptyValues : blankItem
-  Classic --> Format
+  Templates --> Format
   useAutosave --> ServerActions : saveCvAction
-  Preview --> Classic
+  Preview --> Templates : template picker
+  Preview --> TemplateInfo
+  Parsability --> TemplateInfo : one column
+  ServerActions --> TemplateInfo : words per line (tighten)
   Preview --> PageGeometry
   Preview ..> SourceRoute : Original PDF tab
   EditorPage --> CvStore : getBase (Base CV tab)
@@ -515,5 +526,5 @@ classDiagram
 - **Only `lib/store/*` uses `node:fs`.** Every file (JSON and PDF) is written atomically through `FileStore.writeFileAtomic`, and JSON is validated on every read. Ids from URLs are checked with `isSafeId`, so a URL can't reach outside `DATA_DIR`.
 - **Personal data:**
   - **Read or written by:** `CvStore` (contact + vault, per CV), `ImportStore` (draft text), `SourceStore` (original PDFs) and the import actions.
-  - **Shown by:** `Classic`, the editor's Contact card and `ImportReview`.
+  - **Shown by:** the templates, the editor's Contact card and `ImportReview`.
   - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and analysis, tailoring and tightening (that CV's contact and vault).

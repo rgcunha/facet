@@ -19,6 +19,7 @@ export default async function EditorPage({
       defaultValues={{
         title: cv.title,
         pages: cv.pages,
+        template: cv.template,
         contact: cv.contact,
         content: cv.content,
         changes: cv.changes,

@@ -1,8 +1,8 @@
 import { entryValues, filled, fold, visible } from "@/lib/cv/format";
 import {
   type Analysis,
-  type Contact,
   type CvContent,
+  type CvView,
   LIST_SECTIONS,
 } from "@/lib/cv/schema";
 import { parseDate } from "./dates";
@@ -75,7 +75,7 @@ function titleMatch(
  * user edits: the job's requirements (or a synonym) found as whole words, title, years, readability.
  */
 export function scoreCv(
-  cv: { contact: Contact; content: CvContent },
+  cv: CvView,
   report: Pick<Analysis, "requirements" | "title" | "yearsRequired">,
 ) {
   const text = cvWords(cv.content);

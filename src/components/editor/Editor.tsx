@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { joinFilled, range } from "@/lib/cv/format";
-import type { Contact, CvContent, EditorValues, Job } from "@/lib/cv/schema";
+import type { CvView, EditorValues, Job } from "@/lib/cv/schema";
 import { tightenAction } from "@/app/actions";
 import { ChangesBanner, FabricationWarnings, FieldChange } from "./changes";
 import {
@@ -43,7 +43,7 @@ export function Editor({
   justImported?: boolean;
   /** For a tailored variant: the job offer, and its base CV to compare with. */
   job: Job | null;
-  base?: { contact: Contact; content: CvContent };
+  base?: CvView;
   openTailor?: boolean;
 }) {
   const form = useForm<EditorValues>({ defaultValues });

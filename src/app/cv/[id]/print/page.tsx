@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { exportFileName, PAGE_VARS, PRINT_PAGE_CSS } from "@/lib/cv/page";
 import { getCv } from "@/lib/store/cvs";
-import { Classic } from "@/templates/Classic";
+import { TEMPLATES } from "@/templates";
 import { AutoPrint } from "./auto-print";
 
 // Shared by generateMetadata and the page within one request.
@@ -28,6 +28,7 @@ export default async function PrintPage({
   params,
 }: PageProps<"/cv/[id]/print">) {
   const cv = await load((await params).id);
+  const Template = TEMPLATES[cv.template];
 
   return (
     <main
@@ -35,7 +36,7 @@ export default async function PrintPage({
       style={PAGE_VARS}
     >
       <style>{PRINT_PAGE_CSS}</style>
-      <Classic contact={cv.contact} content={cv.content} />
+      <Template contact={cv.contact} content={cv.content} />
       <AutoPrint />
     </main>
   );

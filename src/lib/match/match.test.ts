@@ -75,7 +75,7 @@ describe("scoreCv", () => {
       skills: [{ id: "s", group: "", items: ["GoLang"] }],
     });
     const score = scoreCv(
-      { contact, content: cv },
+      { contact, template: "classic", content: cv },
       job({
         requirements: [
           { name: "Kubernetes", synonyms: ["k8s"], priority: "must" },
@@ -92,7 +92,10 @@ describe("scoreCv", () => {
 
   test("title: all core words is a match, half is partial; seniority words don't count", () => {
     const title = (headline: string) =>
-      scoreCv({ contact, content: content({ headline }) }, job()).title;
+      scoreCv(
+        { contact, template: "classic", content: content({ headline }) },
+        job(),
+      ).title;
     expect(title("Platform Engineer")).toBe("match");
     expect(title("Senior Backend Engineer")).toBe("partial");
     expect(title("Data Scientist")).toBe("none");
@@ -106,7 +109,9 @@ describe("scoreCv", () => {
         role("Intern", "C", "2015", "2015"),
       ],
     });
-    expect(scoreCv({ contact, content: cv }, job()).years.have).toBe(4); // 36 + 5 (B after A ends) + 12 months
+    expect(
+      scoreCv({ contact, template: "classic", content: cv }, job()).years.have,
+    ).toBe(4); // 36 + 5 (B after A ends) + 12 months
   });
 
   test("total weighs the parts that apply, out of 100", () => {
@@ -116,7 +121,7 @@ describe("scoreCv", () => {
       experience: [role("Platform Engineer", "A", "2016", "2021")],
     });
     const full = scoreCv(
-      { contact, content: cv },
+      { contact, template: "classic", content: cv },
       job({
         yearsRequired: 5,
         requirements: [{ name: "Kubernetes", synonyms: [], priority: "must" }],
@@ -124,7 +129,7 @@ describe("scoreCv", () => {
     );
     expect(full.total).toBe(100);
     const half = scoreCv(
-      { contact, content: cv },
+      { contact, template: "classic", content: cv },
       job({
         requirements: [
           { name: "Kubernetes", synonyms: [], priority: "must" },
@@ -140,6 +145,7 @@ describe("scoreCv", () => {
 describe("readabilityChecks", () => {
   test("fails a role without a company or a readable start date, and missing contact", () => {
     const checks = readabilityChecks({
+      template: "sidebar",
       contact: { ...contact, email: "" },
       content: content({ experience: [role("Engineer", "", "sometime", "")] }),
     });
@@ -147,6 +153,7 @@ describe("readabilityChecks", () => {
       "Name and an email or phone",
       "Every role has a job title and a company",
       "Every role has a start date an ATS can read",
+      "One-column template",
       "Skills are listed",
     ]);
   });

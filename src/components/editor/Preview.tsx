@@ -8,18 +8,22 @@ import {
   useRef,
   useState,
 } from "react";
-import { useWatch } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 import { plural } from "@/lib/cv/format";
 import { PAGE, PAGE_CONTENT_HEIGHT_MM, PX_PER_MM } from "@/lib/cv/page";
-import type { Contact, CvContent, EditorValues } from "@/lib/cv/schema";
-import { Classic } from "@/templates/Classic";
+import { type CvView, type EditorValues, TEMPLATE_IDS } from "@/lib/cv/schema";
+import { TEMPLATE_INFO } from "@/lib/cv/templates";
+import { TEMPLATES } from "@/templates";
 
 const PAGE_WIDTH_PX = PAGE.widthMm * PX_PER_MM;
 const PAGE_CONTENT_PX = PAGE_CONTENT_HEIGHT_MM * PX_PER_MM;
 const PAGE_HEIGHT_PX = PAGE.heightMm * PX_PER_MM;
 const PAGE_MARGINS_Y_PX = 2 * PAGE.marginYMm * PX_PER_MM;
 // Re-measuring after a render (setSize) must not re-render the whole CV again.
-const Template = memo(Classic);
+const Template = memo(function Template({ template, ...cv }: CvView) {
+  const Chosen = TEMPLATES[template];
+  return <Chosen {...cv} />;
+});
 /** An A4 sheet with the print margins; both tabs draw the CV on one of these. */
 const SHEET_CLASS =
   "bg-white shadow-[0_1px_3px_rgba(21,24,30,.12),0_8px_24px_rgba(21,24,30,.08)]";
@@ -43,7 +47,7 @@ export function Preview({
   tightening = false,
 }: {
   sourceUrl?: string;
-  base?: { contact: Contact; content: CvContent };
+  base?: CvView;
   /** A tailored variant's match report. */
   report?: ReactNode;
   showSecond?: boolean;
@@ -66,6 +70,7 @@ export function Preview({
   const [secondOpened, setSecondOpened] = useState(tab === "second");
   // Deferred, so typing stays responsive while the preview catches up.
   const values = useDeferredValue(useWatch<EditorValues>() as EditorValues);
+  const { setValue } = useFormContext<EditorValues>();
   const paneRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ contentPx: 0, linePx: 1, scale: 1 });
@@ -148,6 +153,39 @@ export function Preview({
           </button>
         )}
       </div>
+      {tab === "preview" && (
+        <div
+          role="radiogroup"
+          aria-label="Template"
+          className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2 border-b border-line bg-white px-4 py-2.5"
+        >
+          {TEMPLATE_IDS.map((id) => {
+            const t = TEMPLATE_INFO[id];
+            const on = values.template === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                disabled={tightening}
+                onClick={() => setValue("template", id)}
+                className={`flex min-h-11 flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left ${on ? "border-2 border-accent bg-accent-soft" : "border border-field bg-white"}`}
+              >
+                <span className="flex w-full items-center justify-between gap-2">
+                  <span className="font-semibold">{t.name}</span>
+                  <span
+                    className={`rounded px-1.5 text-[11px] font-semibold ${t.singleColumn ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn"}`}
+                  >
+                    {t.singleColumn ? "ATS safe" : "ATS: check"}
+                  </span>
+                </span>
+                <span className="text-xs text-muted">{t.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {secondOpened && sourceUrl && (
         <iframe
           hidden={tab !== "second"}
@@ -163,7 +201,7 @@ export function Preview({
             className={`mx-auto ${SHEET_CLASS}`}
             style={{ ...SHEET_STYLE, zoom: size.scale }}
           >
-            <Template contact={base.contact} content={base.content} />
+            <Template {...base} />
           </div>
         </div>
       )}
@@ -187,7 +225,11 @@ export function Preview({
             style={{ ...SHEET_STYLE, transform: `scale(${size.scale})` }}
           >
             <div ref={contentRef}>
-              <Template contact={values.contact} content={values.content} />
+              <Template
+                contact={values.contact}
+                content={values.content}
+                template={values.template}
+              />
             </div>
             {Array.from({ length: pagesUsed - 1 }, (_, i) => (
               <div

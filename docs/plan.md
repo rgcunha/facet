@@ -19,7 +19,8 @@
   - The "Move to…" menu on highlights was removed.
   - Real model calls run through OpenRouter (`deepseek/deepseek-v4.1-flash`).
 - **Phase 4 (match report):** done (2026-10-06). `/simplify` and `/code-review` applied; the 3 review findings were a stale report after editing the job text mid-analysis, "Atualmente"/"Actualidad" not read as present, and year-first dates ("2019-03") losing their month. `bun test` passes 48 tests; analyze → confirm → tailor ran end to end against the real model with a made-up CV. The "single-column template" readability check moves to Phase 5.
-- **Next:** Phase 5 (templates). Mockups: the v3 row on the canvas.
+- **Phase 5 (templates):** done (2026-10-06). `/simplify` and `/code-review` applied; the one review finding was a stray " | " in Sidebar for a role without a company. All three templates and the picker were checked in headless Firefox screenshots; `bun test` passes 48 tests.
+- **All planned phases are done.**
 
 ## Context
 
@@ -479,7 +480,7 @@ Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each buil
 - **Tests:** `scoreCv` (each part, synonyms, whole words), `parsability`, the fabrication check with confirmed skills, and the privacy test extended to `analyzeCv`.
 - **Diagrams:** add `MatchReport`, `Requirement`, `AnalyzeCv`, `MatchScore`, `Parsability`; update `Job` and `TailorCv`.
 
-**Phase 5: Templates.** Mockup: v3 "Template picker".
+**Phase 5: Templates.** ✅ Done (2026-10-06). Mockup: v3 "Template picker".
 
 - The ATS readability check gains "single-column template" (fails for Sidebar).
 - `template: classic | sidebar | modern` on each CV (default `classic`), picked in the preview toolbar, saved with the CV and used by the print route. Variants copy it from their base.
