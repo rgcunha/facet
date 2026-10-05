@@ -210,7 +210,7 @@ classDiagram
   class Fields {
     <<component>>
     Card, Grid, TextField, ItemList
-    StringListField, CommaListField, MoveToRole
+    StringListField, CommaListField
   }
   class Preview {
     <<component>>

@@ -17,7 +17,6 @@ import {
   CommaListField,
   Grid,
   ItemList,
-  MoveToRole,
   StringListField,
   TextField,
 } from "./fields";
@@ -138,8 +137,7 @@ export function Editor({
           >
             <span className="flex-[1_1_400px]">
               <strong>Parsed.</strong> Compare with your original on the right
-              and fix anything that landed in the wrong place; “Move to…” moves
-              a highlight to another role.
+              and fix anything that landed in the wrong place.
             </span>
             <button
               type="button"
@@ -217,7 +215,7 @@ export function Editor({
                 joinFilled([e.role, e.company, range(e.start, e.end)])
               }
             >
-              {(p, i) => (
+              {(p) => (
                 <>
                   <Grid>
                     <TextField name={`${p}.role`} label="Role" />
@@ -230,7 +228,6 @@ export function Editor({
                     name={`${p}.highlights`}
                     label="Highlights"
                     addLabel="Add highlight"
-                    itemActions={(h) => <MoveToRole role={i} highlight={h} />}
                   />
                 </>
               )}

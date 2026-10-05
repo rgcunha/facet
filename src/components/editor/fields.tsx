@@ -12,7 +12,6 @@ import {
 import { blankItem } from "@/lib/cv/empty";
 import { changeKind } from "@/lib/cv/changes";
 import { EntryChange, SectionChanges, useChanges } from "./changes";
-import { joinFilled } from "@/lib/cv/format";
 import type { CvContent, EditorValues, ListSection } from "@/lib/cv/schema";
 
 type StringListPath = FieldPathByValue<EditorValues, string[]>;
@@ -72,13 +71,10 @@ export function StringListField({
   name,
   label,
   addLabel,
-  itemActions,
 }: {
   name: StringListPath;
   label: string;
   addLabel: string;
-  /** Extra controls per entry, e.g. "Move to…" for a role's highlights. */
-  itemActions?: (index: number) => ReactNode;
 }) {
   const { field } = useController<EditorValues, StringListPath>({ name });
   const items = field.value;
@@ -105,7 +101,6 @@ export function StringListField({
           >
             ✕
           </button>
-          {itemActions?.(i)}
         </div>
       ))}
       <button
@@ -116,69 +111,6 @@ export function StringListField({
         + {addLabel}
       </button>
     </fieldset>
-  );
-}
-
-/**
- * Moves one highlight to another role, for fixing a parse that put bullets under the wrong job.
- * The role list is read when the menu is focused, so typing elsewhere doesn't re-render it.
- */
-export function MoveToRole({
-  role,
-  highlight,
-}: {
-  role: number;
-  highlight: number;
-}) {
-  const { getValues, setValue } = useFormContext<EditorValues>();
-  const [targets, setTargets] = useState<{ index: number; label: string }[]>(
-    [],
-  );
-
-  const loadTargets = () =>
-    setTargets(
-      getValues("content.experience").flatMap((r, index) =>
-        index === role
-          ? []
-          : [
-              {
-                index,
-                label: joinFilled([r.role, r.company]) || `Role ${index + 1}`,
-              },
-            ],
-      ),
-    );
-
-  const move = (target: number) => {
-    const roles = getValues("content.experience");
-    const text = roles[role].highlights[highlight];
-    setValue(
-      `content.experience.${role}.highlights`,
-      roles[role].highlights.filter((_, i) => i !== highlight),
-    );
-    setValue(`content.experience.${target}.highlights`, [
-      ...roles[target].highlights,
-      text,
-    ]);
-  };
-
-  return (
-    <select
-      aria-label={`Move highlight ${highlight + 1} to another role`}
-      className="input w-auto max-w-44 text-sm text-muted"
-      value=""
-      onFocus={loadTargets}
-      onChange={(e) => move(Number(e.target.value))}
-    >
-      <option value="" disabled>
-        Move to…
-      </option>
-      {targets.map((t) => (
-        <option key={t.index} value={t.index}>
-          {t.label}
-        </option>
-      ))}
-    </select>
   );
 }
 
