@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createCv, deleteCv, getCv, listCvs, updateCv } from "./cvs";
 import { createImport, discardAllImports, getImport } from "./imports";
-import { getProfile, recordImport, updateProfile } from "./profile";
 import { getSourcePdf } from "./sources";
 
 const root = await mkdtemp(path.join(tmpdir(), "cv-tool-"));
@@ -79,56 +78,6 @@ describe("cvs", () => {
     const cv = await createCv("Gone");
     await deleteCv(cv.id);
     expect(await getCv(cv.id)).toBeNull();
-  });
-});
-
-describe("profile", () => {
-  test("defaults to an empty contact, then round trips", async () => {
-    const empty = await getProfile();
-    expect(empty.contact.name).toBe("");
-    const profile = {
-      ...empty,
-      contact: {
-        ...empty.contact,
-        name: "Alex Moreno",
-        links: ["example.com"],
-      },
-    };
-    await updateProfile(profile);
-    expect(await getProfile()).toEqual(profile);
-  });
-
-  test("recordImport fills only empty contact fields, from masked values, and dedupes the vault", async () => {
-    await updateProfile({
-      contact: { ...(await getProfile()).contact, location: "Porto" },
-    });
-    await recordImport([
-      { kind: "name", value: "Alex Moreno" },
-      { kind: "email", value: "alex@example.com" },
-      { kind: "address", value: "Rua do Exemplo 12, Lisboa" },
-      { kind: "url", value: "github.com/alex" },
-      { kind: "custom", value: "Maria Santos" },
-    ]);
-    // A later import never overwrites what is already there.
-    await recordImport([
-      { kind: "name", value: "alex  MORENO" },
-      { kind: "email", value: "other@example.com" },
-    ]);
-    const { contact, vault } = await getProfile();
-    expect(contact).toMatchObject({
-      name: "Alex Moreno",
-      email: "alex@example.com",
-      location: "Porto",
-    });
-    expect(contact.links).toEqual(["github.com/alex"]);
-    expect(vault.map((v) => v.value)).toEqual([
-      "Alex Moreno",
-      "alex@example.com",
-      "Rua do Exemplo 12, Lisboa",
-      "github.com/alex",
-      "Maria Santos",
-      "other@example.com",
-    ]);
   });
 });
 

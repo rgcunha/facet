@@ -1,5 +1,7 @@
 # CV Tool: Project Plan (v2, simplified)
 
+> **Superseded in one respect:** contact details and the PII vault are now stored per CV (`contact` and `vault` in `cvs/<id>.json`), not in a shared `profile.json`. Where this plan says `Profile` or `profile.json`, see `docs/architecture.md` for the current design.
+
 ## Current status (2026-10-05)
 
 - **Phase 1:** done and committed.

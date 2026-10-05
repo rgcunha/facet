@@ -5,7 +5,6 @@ import {
   educationSchema,
   experienceSchema,
   languageSchema,
-  profileSchema,
   projectSchema,
   type ListSection,
   skillGroupSchema,
@@ -14,8 +13,6 @@ import {
 export const UNTITLED_CV = "Untitled CV";
 
 export const shortId = () => crypto.randomUUID().slice(0, 8);
-
-export const emptyProfile = () => profileSchema.parse({ v: 1, contact: {} });
 
 export const emptyContent = () => cvContentSchema.parse({});
 

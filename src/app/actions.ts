@@ -4,11 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { UNTITLED_CV } from "@/lib/cv/empty";
-import {
-  editorValuesSchema,
-  privateValueSchema,
-  profileSchema,
-} from "@/lib/cv/schema";
+import { editorValuesSchema, privateValueSchema } from "@/lib/cv/schema";
 import { NO_CHANGES, recordChanges } from "@/lib/cv/changes";
 import { fetchJobText } from "@/lib/job/fetch";
 import { structureCv } from "@/lib/llm/structure";
@@ -16,6 +12,7 @@ import { tailorCv } from "@/lib/llm/tailor";
 import { tightenCv } from "@/lib/llm/tighten";
 import { extractLines } from "@/lib/pdf/extract";
 import { detectPrivate } from "@/lib/privacy/detect";
+import { contactFromValues, privateValuesOf } from "@/lib/privacy/values";
 import { createCv, deleteCv, getBase, getCv, updateCv } from "@/lib/store/cvs";
 import {
   createImport,
@@ -24,7 +21,6 @@ import {
   discardImport,
   getImport,
 } from "@/lib/store/imports";
-import { getProfile, recordImport, updateProfile } from "@/lib/store/profile";
 
 type ActionResult = { error: string } | undefined;
 
@@ -42,19 +38,9 @@ export async function deleteCvAction(id: string) {
   refresh();
 }
 
-const cvFieldsSchema = editorValuesSchema.omit({ contact: true });
-
-/** Autosave of one CV's own fields. */
+/** Autosave of everything the editor form edits. */
 export async function saveCvAction(id: string, input: unknown) {
-  await updateCv(id, cvFieldsSchema.parse(input));
-}
-
-/**
- * Autosave of the contact details shared by all CVs. The editor only calls this when contact fields
- * were edited, so an editor open on another CV can't overwrite them with what it loaded earlier.
- */
-export async function saveContactAction(input: unknown) {
-  await updateProfile({ contact: profileSchema.shape.contact.parse(input) });
+  await updateCv(id, editorValuesSchema.parse(input));
 }
 
 /** Step 1 of import: read the PDF locally and find personal details. Nothing is sent anywhere. */
@@ -97,10 +83,15 @@ export async function parseImportAction(
   let cvId: string;
   try {
     const { content, language } = await structureCv(draft.text, privateValues);
-    await recordImport(privateValues);
     const cv = await createCv(
       content.headline || draft.fileName.replace(/\.pdf$/i, ""),
-      { content, language, sourcePdf: draft.id },
+      {
+        content,
+        language,
+        sourcePdf: draft.id,
+        contact: contactFromValues(privateValues),
+        vault: privateValues,
+      },
     );
     await deleteImport(draft.id);
     cvId = cv.id;
@@ -146,13 +137,13 @@ export async function tailorAction(
   let variantId: string;
   try {
     // Changes and possible fabrications are judged against the base CV, even when tailoring a variant further.
-    const [found, { vault }] = await Promise.all([getBase(cv), getProfile()]);
+    const found = await getBase(cv);
     const base = found ?? cv; // the base was deleted: judge against this CV
     const tailored = await tailorCv(
       cv.content,
       jobText,
       { language, pages },
-      vault,
+      privateValuesOf(cv),
     );
     const variantLanguage = language || tailored.job.language;
     const variant = await createCv(tailored.job.title || cv.title, {
@@ -160,6 +151,8 @@ export async function tailorAction(
       baseId: found?.id ?? cv.baseId,
       language: variantLanguage,
       pages,
+      contact: cv.contact,
+      vault: cv.vault,
       content: tailored.content,
       job: {
         ...tailored.job,
@@ -192,12 +185,11 @@ export async function tightenAction(
   const cv = await getCv(cvId);
   if (!cv) return { error: "This CV no longer exists." };
   try {
-    const [found, { vault }] = await Promise.all([getBase(cv), getProfile()]);
-    const base = found ?? cv; // the base was deleted: judge against this CV
+    const base = (await getBase(cv)) ?? cv; // the base was deleted: judge against this CV
     const content = await tightenCv(
       cv.content,
       Math.max(1, Math.round(overflowLines)),
-      vault,
+      privateValuesOf(cv),
     );
     // The editor is locked while tightening; still, never overwrite a save made during the call.
     if ((await getCv(cvId))?.updatedAt !== cv.updatedAt)

@@ -1,18 +1,13 @@
 import { notFound } from "next/navigation";
 import { Editor } from "@/components/editor/Editor";
 import { getBase, getCv } from "@/lib/store/cvs";
-import { getProfile } from "@/lib/store/profile";
 
 export default async function EditorPage({
   params,
   searchParams,
 }: PageProps<"/cv/[id]">) {
   const { id } = await params;
-  const [cv, profile, query] = await Promise.all([
-    getCv(id),
-    getProfile(),
-    searchParams,
-  ]);
+  const [cv, query] = await Promise.all([getCv(id), searchParams]);
   if (!cv) notFound();
   const base = cv.baseId ? await getBase(cv) : null; // null too if the base was deleted
 
@@ -24,16 +19,14 @@ export default async function EditorPage({
       defaultValues={{
         title: cv.title,
         pages: cv.pages,
-        contact: profile.contact,
+        contact: cv.contact,
         content: cv.content,
         changes: cv.changes,
       }}
       sourceUrl={cv.sourcePdf ? `/cv/${cv.id}/source` : undefined}
       justImported={query.imported === "1"}
       job={cv.job}
-      base={
-        base ? { contact: profile.contact, content: base.content } : undefined
-      }
+      base={base ?? undefined}
       openTailor={query.tailor === "1"}
     />
   );

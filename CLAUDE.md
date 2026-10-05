@@ -29,8 +29,8 @@ Available once Phase 1 sets up the project:
 ## Privacy rules (non-negotiable)
 
 - **Personal data never reaches an LLM provider.** That means name, email, phone, address, URLs, date of birth, photo and any custom masks.
-- Every LLM call goes through `generateStructured` (`lib/llm/generate.ts`): it masks the prompt with the private values the caller passes, runs the outbound guard, then restores placeholders in the answer. Import passes the values the user chose to mask (so the Import screen preview is exactly what is sent); every other call must pass the profile vault. Never call `generateText` or a provider SDK anywhere else.
-- `Contact` lives only in `data/profile.json`. It is never part of `CvContent` and never part of a prompt; it is merged in only when rendering.
+- Every LLM call goes through `generateStructured` (`lib/llm/generate.ts`): it masks the prompt with the private values the caller passes, runs the outbound guard, then restores placeholders in the answer. Import passes the values the user chose to mask (so the Import screen preview is exactly what is sent); every other call must pass the CV's private values (`privateValuesOf`: its contact plus its vault). Never call `generateText` or a provider SDK anywhere else.
+- `Contact` is stored per CV (`contact` and `vault` in `cvs/<id>.json`, next to `content`; a variant copies its base's). It is never part of `CvContent` and never part of a prompt; it is merged in only when rendering.
 - PDFs are parsed locally. Never send a raw PDF or unredacted text to a model.
 - Job description text is public and may be sent.
 - Any change that touches prompts, the redaction step or the guard must keep the privacy test passing: a mock provider records every request, and no vault value may appear in any of them.
@@ -44,8 +44,7 @@ Available once Phase 1 sets up the project:
 ## Persistence
 
 - Plain JSON files under `DATA_DIR` (default `./data`, gitignored):
-  - `profile.json`: contact details + PII vault
-  - `cvs/<id>.json`: one file per base CV or variant
+  - `cvs/<id>.json`: one file per base CV or variant, with its own contact details and PII vault
   - `sources/<id>.pdf`: the original imported PDF
 - Only `lib/store/*` touches the file system. Pages and components go through server actions.
 - Every read is validated with zod. Every file has a `v` version field. Writes are atomic (write a tmp file, then rename).

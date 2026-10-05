@@ -68,6 +68,8 @@ type CvInit = Partial<
     | "sourcePdf"
     | "language"
     | "pages"
+    | "contact"
+    | "vault"
     | "content"
     | "job"
     | "changes"

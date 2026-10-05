@@ -72,6 +72,12 @@ export const LIST_SECTIONS = [
 ] as const;
 export type ListSection = (typeof LIST_SECTIONS)[number];
 
+/** A personal detail that must never reach an LLM provider. */
+export const privateValueSchema = z.object({
+  kind: z.enum(["name", "email", "phone", "address", "url", "dob", "custom"]),
+  value: z.string().min(1),
+});
+
 export const cvIdSchema = z.string().regex(/^[a-z0-9-]{1,80}$/);
 const pagesSchema = z.union([z.literal(1), z.literal(2)]);
 
@@ -105,6 +111,10 @@ export const cvRecordSchema = z.object({
   sourcePdf: cvIdSchema.nullable().default(null),
   language: z.string(),
   pages: pagesSchema,
+  /** This CV's own contact details. Never part of `content`, so never sent to an LLM. */
+  contact: contactSchema.prefault({}),
+  /** Values masked when this CV was imported (custom masks, extra emails…); see `privateValuesOf`. */
+  vault: listOf(privateValueSchema),
   content: cvContentSchema,
   /** The job offer a variant was tailored to. */
   job: jobSchema.nullable().default(null),
@@ -112,19 +122,6 @@ export const cvRecordSchema = z.object({
   changes: changesSchema.prefault({}),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
-});
-
-/** A personal detail that must never reach an LLM provider. */
-export const privateValueSchema = z.object({
-  kind: z.enum(["name", "email", "phone", "address", "url", "dob", "custom"]),
-  value: z.string().min(1),
-});
-
-export const profileSchema = z.object({
-  v: z.literal(1),
-  contact: contactSchema,
-  /** Every value masked in an import; outgoing LLM requests are masked and checked against these. */
-  vault: listOf(privateValueSchema),
 });
 
 /** An uploaded PDF waiting for review on the Import screen. Holds raw text, so it stays local. */
@@ -149,7 +146,6 @@ export const editorValuesSchema = z.object({
 export type Contact = z.infer<typeof contactSchema>;
 export type CvContent = z.infer<typeof cvContentSchema>;
 export type CvRecord = z.infer<typeof cvRecordSchema>;
-export type Profile = z.infer<typeof profileSchema>;
 export type EditorValues = z.infer<typeof editorValuesSchema>;
 export type PrivateValue = z.infer<typeof privateValueSchema>;
 export type ImportDraft = z.infer<typeof importDraftSchema>;

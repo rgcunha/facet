@@ -23,12 +23,6 @@ Arrows mean:
 ```mermaid
 classDiagram
   direction LR
-  class Profile {
-    <<schema>>
-    +v: 1
-    +contact: Contact
-    +vault: PrivateValue[]
-  }
   class Contact {
     <<schema>>
     +name: string
@@ -63,6 +57,8 @@ classDiagram
     +sourcePdf: string or null
     +language: string
     +pages: 1 or 2
+    +contact: Contact
+    +vault: PrivateValue[]
     +content: CvContent
     +job: Job or null
     +changes: Changes
@@ -136,8 +132,8 @@ classDiagram
     +changes: Changes
   }
 
-  Profile "1" *-- "1" Contact
-  Profile "1" *-- "0..*" PrivateValue : vault
+  CvRecord "1" *-- "1" Contact
+  CvRecord "1" *-- "0..*" PrivateValue : vault
   ImportDraft "1" *-- "0..*" PrivateValue : detected
   CvRecord --> CvKind
   CvRecord "1" *-- "1" CvContent
@@ -152,23 +148,22 @@ classDiagram
   CvContent "1" *-- "0..*" CustomSection
   CvRecord "0..*" --> "0..1" CvRecord : variant of (baseId)
   ImportDraft ..> CvRecord : parsed into (sourcePdf = draft id)
-  EditorValues ..> Contact : saved to Profile (only when edited)
-  EditorValues ..> CvContent : saved to CvRecord
+  EditorValues ..> CvRecord : saved to
 ```
 
-- **Personal data lives only in `Profile` and `ImportDraft`**, both local files: `data/profile.json` and `data/imports/<id>.json`. A `CvRecord` (`data/cvs/<id>.json`) never holds `Contact`. Every CV is rendered by combining its `CvContent` with the profile's `Contact`.
-- **The vault** holds every value the user chose to mask in an import (`PrivateValue`). Outgoing LLM text is masked with those values and checked against them.
+- **Personal data lives only in local files**: each `CvRecord` (`data/cvs/<id>.json`) holds its own `Contact` and `vault`, and `ImportDraft` (`data/imports/<id>.json`) holds raw text. Contact is a sibling of `CvContent`, never inside it. Each CV is rendered by combining its `CvContent` with its own `Contact`, so a CV imported for someone else carries that person's details.
+- **The vault** holds the values the user chose to mask when the CV was imported (`PrivateValue`: custom masks, extra emails…). Outgoing LLM text is masked with the vault plus the CV's current `Contact` (`privateValuesOf`), so edited details count too, and checked against them.
 - **`CvContent` is the only CV structure that is sent to an LLM**, and only after masking.
 - **An `ImportDraft`** exists between upload and "Parse CV". It holds the extracted text, which still contains personal data, so it never leaves the machine. Parsing creates a `CvRecord` whose `sourcePdf` keeps the draft's PDF (`data/sources/<id>.pdf`) for the "Original PDF" tab, then deletes the draft.
-- **`EditorValues`** is what the editor form edits. On save it is split: the CV fields go to the CV file, and `contact` goes to the profile only when it was edited in that editor.
-- **A variant** (`kind: variant`, `baseId`) is an independent copy of the CV it was tailored from, plus the `Job` it targets. Editing the base later doesn't change it.
+- **`EditorValues`** is what the editor form edits (title, pages, contact, content, changes) and autosaves into the CV file.
+- **A variant** (`kind: variant`, `baseId`) is an independent copy of the CV it was tailored from (contact and vault included), plus the `Job` it targets. Editing the base later doesn't change it.
 - **`Changes`** records what tailoring or "Tighten to fit" changed, until the user reverts or keeps each change. `original` maps a key to what was there before:
   - `headline` / `summary`
   - `<section>.<entryId>`: an entry that was changed, added (`null`) or removed
   - `<section>.order`: the previous order of the entries
   - Entries are tracked by their ids, which the model must keep, so changes survive reordering.
   - `flags` are possible fabrications, each pointing at one of those keys.
-- **Defaults live in the schema** (zod `.default()`). Empty CVs and blank entries are derived from it, and older files that lack a newer field (e.g. `sourcePdf`, `vault`) read back with its default.
+- **Defaults live in the schema** (zod `.default()`). Empty CVs and blank entries are derived from it, and older files that lack a newer field (e.g. `sourcePdf`) read back with its default.
 
 ## 2. Components
 
@@ -239,7 +234,6 @@ classDiagram
     +createCvAction()
     +deleteCvAction(id)
     +saveCvAction(id, fields)
-    +saveContactAction(contact)
     +uploadPdfAction(file)
     +parseImportAction(importId, masked)
     +cancelImportAction(importId)
@@ -278,6 +272,11 @@ classDiagram
     +redact(text, masks)
     +rehydrate(data, masks)
   }
+  class PrivateValues {
+    <<module>>
+    +contactFromValues(values)
+    +privateValuesOf(cv)
+  }
   class OutboundGuard {
     <<module>>
     +assertNoPrivateData(payload, values)
@@ -289,11 +288,11 @@ classDiagram
   }
   class TailorCv {
     <<module>>
-    +tailorCv(content, jobText, options, vault)
+    +tailorCv(content, jobText, options, privateValues)
   }
   class TightenCv {
     <<module>>
-    +tightenCv(content, overflowLines, vault)
+    +tightenCv(content, overflowLines, privateValues)
   }
   class LlmContent {
     <<module>>
@@ -336,12 +335,6 @@ classDiagram
     +getSourcePdf(id)
     +deleteSourcePdf(id)
   }
-  class ProfileStore {
-    <<module>>
-    +getProfile()
-    +updateProfile(patch)
-    +recordImport(masked)
-  }
   class FileStore {
     <<module>>
     +dataPath(...)
@@ -359,7 +352,6 @@ classDiagram
   class EmptyValues {
     <<module>>
     UNTITLED_CV, shortId
-    +emptyProfile()
     +emptyContent()
     +blankItem
   }
@@ -385,10 +377,8 @@ classDiagram
   ImportReview --> Redactor : preview of what is sent
   ImportReview --> ServerActions : parseImportAction, cancelImportAction
   EditorPage --> CvStore : getCv
-  EditorPage --> ProfileStore : getProfile
   EditorPage --> Editor
   PrintPage --> CvStore
-  PrintPage --> ProfileStore
   PrintPage --> Classic
   PrintPage --> AutoPrint
   PrintPage --> PageGeometry
@@ -408,7 +398,7 @@ classDiagram
   Editor --> Format : entry summaries
   Fields --> EmptyValues : blankItem
   Classic --> Format
-  useAutosave --> ServerActions : saveCvAction, saveContactAction (only if edited)
+  useAutosave --> ServerActions : saveCvAction
   Preview --> Classic
   Preview --> PageGeometry
   Preview ..> SourceRoute : Original PDF tab
@@ -423,7 +413,7 @@ classDiagram
   ServerActions --> Changes : recordChanges
   ServerActions --> CvStore
   ServerActions --> ImportStore
-  ServerActions --> ProfileStore : recordImport
+  ServerActions --> PrivateValues : contactFromValues, privateValuesOf
 
   StructureCv --> LlmGenerate
   TailorCv --> LlmGenerate
@@ -439,25 +429,23 @@ classDiagram
   OpenAICompatibleProvider ..|> LanguageModel
 
   PiiDetector --> Redactor : sameValue
-  ProfileStore --> Redactor : sameValue
+  PrivateValues --> Redactor : sameValue
   CvStore --> FileStore
   CvStore --> SourceStore : deleteSourcePdf
   ImportStore --> SourceStore : save / delete PDF
   ImportStore --> FileStore
   SourceStore --> FileStore
-  ProfileStore --> FileStore
   CvStore --> EmptyValues
-  ProfileStore --> EmptyValues
 ```
 
 - **Every LLM call goes through `LlmGenerate.generateStructured`.** It masks the prompt with `Redactor` (the same `redact` the Import screen uses for its "What's sent" preview, so the preview is exactly what is sent). `OutboundGuard` then blocks the request if any private value is still present, even reformatted (e.g. a phone number with different separators), before anything leaves the machine. The model's answer is rehydrated locally: placeholders such as `{{URL_2}}` become the real values again.
 - **Vendor-agnostic:** only `ProviderFactory` knows about vendors, and it picks one from `.env` (`LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`). `anthropic` uses Claude; `openai-compatible` covers OpenRouter, Ollama, LM Studio and similar.
 - **Import is two steps.**
   1. `uploadPdfAction` reads the PDF locally (`PdfExtractor`, pdf.js) and finds personal details (`PiiDetector`, regexes and font size, no network). It stores an `ImportDraft`.
-  2. `parseImportAction` sends the masked text to the model (`StructureCv`), records the import in the profile, and creates the CV. `recordImport` fills only empty contact fields, and only from values the user kept masked, so an import never overwrites the shared contact details. It also adds the masked values to the vault.
+  2. `parseImportAction` sends the masked text to the model (`StructureCv`) and creates the CV. The new CV's `Contact` comes from the values the user kept masked (`contactFromValues`), and those values also become its vault.
   3. **Cancel import** discards the draft and its PDF. Leftovers from imports that were never parsed (e.g. the tab was closed) are discarded at the next upload, so unmasked CV text doesn't pile up in `data/imports/`.
 - **Tailoring creates a variant.**
-  - `tailorAction` sends the CV content (never `Contact`) and the job text. Both are masked with the whole vault, so personal details in a pasted posting are masked too.
+  - `tailorAction` sends the CV content (never `Contact`) and the job text. Both are masked with that CV's private values (`privateValuesOf`), so personal details in a pasted posting are masked too. The variant copies the CV's contact and vault.
   - Entry ids are kept, and `withIds` replaces any id the model invents or repeats.
   - `recordChanges` records every change (`diffContent`) and flags new facts (employers, roles, dates, degrees, skills) that appear neither in the base CV nor in what the user had before this round, so anything they kept stays kept (`findFabrications`). That check is done locally, not by the model.
   - When the variant is in another language than its base, only language-neutral facts are checked: employers, schools, dates, links and skills. The import step detects each CV's language for this.
@@ -467,6 +455,6 @@ classDiagram
 - **Pages read data on the server** via the stores; **every write goes through `ServerActions`**, which validate their input with zod. Client components never touch the file system.
 - **Only `lib/store/*` uses `node:fs`.** Every file (JSON and PDF) is written atomically through `FileStore.writeFileAtomic`, and JSON is validated on every read. Ids from URLs are checked with `isSafeId`, so a URL can't reach outside `DATA_DIR`.
 - **Personal data:**
-  - **Read or written by:** `ProfileStore` (contact + vault), `ImportStore` (draft text), `SourceStore` (original PDFs) and the import actions.
+  - **Read or written by:** `CvStore` (contact + vault, per CV), `ImportStore` (draft text), `SourceStore` (original PDFs) and the import actions.
   - **Shown by:** `Classic`, the editor's Contact card and `ImportReview`.
-  - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and tailoring and tightening (the whole vault).
+  - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and tailoring and tightening (that CV's contact and vault).

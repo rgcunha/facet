@@ -3,30 +3,31 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { exportFileName, PAGE_VARS, PRINT_PAGE_CSS } from "@/lib/cv/page";
 import { getCv } from "@/lib/store/cvs";
-import { getProfile } from "@/lib/store/profile";
 import { Classic } from "@/templates/Classic";
 import { AutoPrint } from "./auto-print";
 
 // Shared by generateMetadata and the page within one request.
 const load = cache(async (id: string) => {
-  const [cv, profile] = await Promise.all([getCv(id), getProfile()]);
+  const cv = await getCv(id);
   if (!cv) notFound();
-  return { cv, contact: profile.contact };
+  return cv;
 });
 
 /** Browsers use the document title as the default PDF file name. */
 export async function generateMetadata({
   params,
 }: PageProps<"/cv/[id]/print">): Promise<Metadata> {
-  const { cv, contact } = await load((await params).id);
-  return { title: exportFileName(contact.name, cv.job?.company || cv.title) };
+  const cv = await load((await params).id);
+  return {
+    title: exportFileName(cv.contact.name, cv.job?.company || cv.title),
+  };
 }
 
 /** Print-only view: the browser's "Save as PDF" turns this into the exported file. */
 export default async function PrintPage({
   params,
 }: PageProps<"/cv/[id]/print">) {
-  const { cv, contact } = await load((await params).id);
+  const cv = await load((await params).id);
 
   return (
     <main
@@ -34,7 +35,7 @@ export default async function PrintPage({
       style={PAGE_VARS}
     >
       <style>{PRINT_PAGE_CSS}</style>
-      <Classic contact={contact} content={cv.content} />
+      <Classic contact={cv.contact} content={cv.content} />
       <AutoPrint />
     </main>
   );
