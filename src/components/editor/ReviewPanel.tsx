@@ -52,21 +52,19 @@ export function ReviewPanel({
   const [sendAsWritten, setSendAsWritten] = useState<string[]>([]);
   const content = useWatch<EditorValues, "content">({ name: "content" });
 
-  const review = () =>
-    startReview(async () => {
-      setError(undefined);
-      setError(
-        await track(async () => {
-          if (!(await saveFirst())) return SAVE_FAILED;
-          const snapshot = JSON.stringify(content);
-          const result = await reviewAction(cvId);
-          if ("error" in result) return result.error;
-          setSuggestions(result.suggestions);
-          setReviewed(snapshot);
-          setUnticked([]);
-        }),
-      );
+  const review = () => {
+    setError(undefined);
+    const run = track(async () => {
+      if (!(await saveFirst())) return SAVE_FAILED;
+      const snapshot = JSON.stringify(content);
+      const result = await reviewAction(cvId);
+      if ("error" in result) return result.error;
+      setSuggestions(result.suggestions);
+      setReviewed(snapshot);
+      setUnticked([]);
     });
+    startReview(async () => setError(await run));
+  };
 
   // The review starts when the panel first opens. The ref stops it running again when the panel is shown
   // again (effects re-run when an Activity becomes visible) and on React's dev double-mount.

@@ -23,6 +23,9 @@ import { SAVE_FAILED, type SaveStatus, useAutosave } from "./use-autosave";
 
 type Panel = "review" | "tailor";
 
+const WAIT_FOR_PANEL =
+  "Wait for the Review or Tailor panel to finish first: changing the CV now would discard its result.";
+
 const statusText: Record<SaveStatus, string> = {
   saved: "Saved",
   unsaved: "Unsaved changes",
@@ -65,10 +68,7 @@ export function Editor({
 
   // Saved first, so the model edits what is on screen; the page then reloads with the result.
   const revise = (request: ReviseRequest, masks?: PrivateValue[]) => {
-    if (running.review || running.tailor)
-      return setReviseError(
-        "Wait for the Review or Tailor panel to finish first: changing the CV now would discard its result.",
-      );
+    if (running.review || running.tailor) return setReviseError(WAIT_FOR_PANEL);
     startRevise(async () => {
       setReviseError(undefined);
       const result = (await flush())
@@ -82,7 +82,8 @@ export function Editor({
     setPanel(panel === name ? null : name);
     if (!opened[name]) setOpened({ ...opened, [name]: true });
   };
-  // A panel can be closed while its call runs, so an error reopens it instead of staying hidden.
+  // A panel can be closed while its call runs, so an error reopens it instead of staying hidden. Panels
+  // call it before startTransition: React holds updates made inside an async transition until it ends.
   const track =
     (name: Panel) => async (run: () => Promise<string | undefined>) => {
       setRunning((r) => ({ ...r, [name]: true }));
@@ -92,6 +93,7 @@ export function Editor({
         return error;
       } finally {
         setRunning((r) => ({ ...r, [name]: false }));
+        setReviseError((e) => (e === WAIT_FOR_PANEL ? undefined : e));
       }
     };
 

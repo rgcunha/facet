@@ -53,31 +53,27 @@ export function TailorPanel({
     setReport(undefined);
   };
 
-  const fetchJob = () =>
-    startFetch(async () => {
-      setError(undefined);
-      setError(
-        await track(async () => {
-          const result = await fetchJobAction(url);
-          if ("error" in result) return result.error;
-          changeJobText(result.text);
-        }),
-      );
+  const fetchJob = () => {
+    setError(undefined);
+    const run = track(async () => {
+      const result = await fetchJobAction(url);
+      if ("error" in result) return result.error;
+      changeJobText(result.text);
     });
+    startFetch(async () => setError(await run));
+  };
 
-  const analyze = () =>
-    startAnalyze(async () => {
-      setError(undefined);
-      setError(
-        await track(async () => {
-          if (!(await saveFirst())) return SAVE_FAILED;
-          const result = await analyzeAction(cvId, jobText);
-          if ("error" in result) return result.error;
-          setReport(result.report);
-          setConfirmed([]);
-        }),
-      );
+  const analyze = () => {
+    setError(undefined);
+    const run = track(async () => {
+      if (!(await saveFirst())) return SAVE_FAILED;
+      const result = await analyzeAction(cvId, jobText);
+      if ("error" in result) return result.error;
+      setReport(result.report);
+      setConfirmed([]);
     });
+    startAnalyze(async () => setError(await run));
+  };
 
   const toggle = (name: string) =>
     setConfirmed(
@@ -86,24 +82,22 @@ export function TailorPanel({
         : [...confirmed, name],
     );
 
-  const tailor = (analysis: Analysis) =>
-    startTailor(async () => {
-      setError(undefined);
-      setError(
-        await track(async () => {
-          if (!(await saveFirst())) return SAVE_FAILED;
-          const result = await tailorAction(cvId, {
-            jobText,
-            url,
-            language,
-            pages,
-            report: analysis,
-            confirmed,
-          });
-          return result?.error; // On success the variant opens.
-        }),
-      );
+  const tailor = (analysis: Analysis) => {
+    setError(undefined);
+    const run = track(async () => {
+      if (!(await saveFirst())) return SAVE_FAILED;
+      const result = await tailorAction(cvId, {
+        jobText,
+        url,
+        language,
+        pages,
+        report: analysis,
+        confirmed,
+      });
+      return result?.error; // On success the variant opens.
     });
+    startTailor(async () => setError(await run));
+  };
 
   return (
     <section
