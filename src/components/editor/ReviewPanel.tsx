@@ -41,9 +41,13 @@ export function ReviewPanel({
   revise: (request: ReviseRequest, masks?: PrivateValue[]) => void;
   revising: boolean;
 }) {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>();
-  /** The CV as it was reviewed: suggestions quote its words, so they don't apply once it's edited. */
-  const [reviewed, setReviewed] = useState("");
+  /** `snapshot` is the CV as it was reviewed: suggestions quote its words, so they don't apply once it's edited. */
+  const [result, setResult] = useState<{
+    suggestions: Suggestion[];
+    model: string;
+    snapshot: string;
+  }>();
+  const suggestions = result?.suggestions;
   const [unticked, setUnticked] = useState<number[]>([]);
   const [error, setError] = useState<string>();
   const [reviewing, startReview] = useTransition();
@@ -57,10 +61,9 @@ export function ReviewPanel({
     const run = track(async () => {
       if (!(await saveFirst())) return SAVE_FAILED;
       const snapshot = JSON.stringify(content);
-      const result = await reviewAction(cvId);
-      if ("error" in result) return result.error;
-      setSuggestions(result.suggestions);
-      setReviewed(snapshot);
+      const answer = await reviewAction(cvId);
+      if ("error" in answer) return answer.error;
+      setResult({ ...answer, snapshot });
       setUnticked([]);
     });
     startReview(async () => setError(await run));
@@ -84,7 +87,7 @@ export function ReviewPanel({
   const masks = found.filter((v) => !sendAsWritten.includes(v.value));
 
   const busy = reviewing || revising;
-  const stale = !!suggestions && JSON.stringify(content) !== reviewed;
+  const stale = !!result && JSON.stringify(content) !== result.snapshot;
   const all = (suggestions ?? []).map((s, i) => ({
     ...s,
     i,
@@ -150,7 +153,8 @@ export function ReviewPanel({
 
       {suggestions?.length === 0 && (
         <p role="status" className="text-sm">
-          No suggestions: your CV already follows good practice.
+          No suggestions from {result?.model}: your CV already follows good
+          practice.
         </p>
       )}
 
@@ -158,6 +162,10 @@ export function ReviewPanel({
         <fieldset className="flex flex-col gap-4" disabled={busy}>
           <legend className="mb-1 text-[13px] font-semibold tracking-wide text-muted uppercase">
             {plural(suggestions.length, "suggestion")}
+            <span className="font-normal tracking-normal normal-case">
+              {" "}
+              · reviewed by {result?.model}
+            </span>
           </legend>
           {sections.map((section) => (
             <div key={section} className="flex flex-col gap-2">

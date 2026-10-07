@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import {
   type CvContent,
   type PrivateValue,
@@ -6,6 +5,7 @@ import {
 } from "@/lib/cv/schema";
 import { CV_PRACTICE, keepTermsRule, PLACEHOLDER_RULE } from "./content";
 import { generateStructured } from "./generate";
+import { getModel } from "./provider";
 
 const SYSTEM = `You review a CV the way an experienced recruiter for the candidate's field would, and list what to improve.
 
@@ -17,12 +17,15 @@ ${CV_PRACTICE}
 - Write in the CV's language.
 ${PLACEHOLDER_RULE}`;
 
-/** Reviews a CV against good CV practice. Every private value of the CV is masked before sending. */
+/**
+ * Reviews a CV against good CV practice. Every private value of the CV is masked before sending.
+ * Also returns the model's name, so the panel can say which model wrote the review.
+ */
 export async function reviewCv(
   content: CvContent,
   privateValues: PrivateValue[],
   { keep = [] as string[] } = {},
-  model?: LanguageModel,
+  model = getModel(),
 ) {
   const { suggestions } = await generateStructured({
     schema: reviewSchema,
@@ -31,5 +34,5 @@ export async function reviewCv(
     privateValues,
     model,
   });
-  return suggestions;
+  return { suggestions, model: model.modelId };
 }

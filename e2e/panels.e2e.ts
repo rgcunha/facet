@@ -72,6 +72,7 @@ test("a closed panel keeps its work", async ({ page }) => {
 
   await review.click();
   await expect(reviewPanel.getByText("2 suggestions")).toBeVisible();
+  await expect(reviewPanel.getByText("· reviewed by mock")).toBeVisible();
   await review.click();
   await review.click();
   await expect(reviewPanel.getByText("2 suggestions")).toBeVisible();

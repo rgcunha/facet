@@ -8,7 +8,7 @@ import type { LanguageModel } from "ai";
  * - openai-compatible: anything with an OpenAI-style endpoint, e.g. OpenRouter
  *   (https://openrouter.ai/api/v1), Ollama (http://localhost:11434/v1) or LM Studio.
  */
-export function getModel(): LanguageModel {
+export function getModel(): Exclude<LanguageModel, string> {
   const {
     LLM_PROVIDER = "anthropic",
     LLM_MODEL,

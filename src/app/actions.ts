@@ -233,15 +233,13 @@ const keepTerms = (cv: CvRecord) =>
 /** Reviews a CV against good CV practice. The suggestions are returned, not saved. */
 export async function reviewAction(
   cvId: string,
-): Promise<{ suggestions: Suggestion[] } | { error: string }> {
+): Promise<{ suggestions: Suggestion[]; model: string } | { error: string }> {
   const cv = await getCv(cvId);
   if (!cv) return { error: "This CV no longer exists." };
   try {
-    return {
-      suggestions: await reviewCv(cv.content, privateValuesOf(cv), {
-        keep: keepTerms(cv),
-      }),
-    };
+    return await reviewCv(cv.content, privateValuesOf(cv), {
+      keep: keepTerms(cv),
+    });
   } catch (e) {
     return { error: errorMessage(e) };
   }

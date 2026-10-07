@@ -363,7 +363,7 @@ classDiagram
   }
   class ReviewCv {
     <<module>>
-    +reviewCv(content, privateValues, keep)
+    +reviewCv(content, privateValues, keep) suggestions, model name
   }
   class ReviseCv {
     <<module>>
@@ -520,6 +520,7 @@ classDiagram
   AnalyzeCv --> LlmGenerate
   TailorCv --> LlmGenerate
   ReviewCv --> LlmGenerate
+  ReviewCv --> ProviderFactory : getModel, to name the model
   ReviseCv --> LlmGenerate
   StructureCv --> LlmContent
   TailorCv --> LlmContent

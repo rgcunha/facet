@@ -286,7 +286,7 @@ test("a review masks the CV's private values and passes on the job's keywords", 
       },
     ],
   });
-  const suggestions = await reviewCv(
+  const { suggestions, model: name } = await reviewCv(
     { ...emptyContent(), summary: "Alex Moreno runs Kubernetes." },
     privateValues,
     { keep: ["Kubernetes"] },
@@ -296,6 +296,7 @@ test("a review masks the CV's private values and passes on the job's keywords", 
   for (const { value } of privateValues) expect(sent).not.toContain(value);
   expect(sent).toContain("Keep these terms wherever they appear");
   expect(suggestions[0].problem).toBe("Names Alex Moreno in the third person");
+  expect(name).toBe(model.modelId);
 });
 
 test("revising masks names in the user's instruction as well as the CV, and keeps entry ids", async () => {
