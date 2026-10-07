@@ -2,7 +2,7 @@
 
 > **Superseded in one respect:** contact details and the PII vault are now stored per CV (`contact` and `vault` in `cvs/<id>.json`), not in a shared `profile.json`. Where this plan says `Profile` or `profile.json`, see `docs/architecture.md` for the current design.
 
-## Current status (2026-10-07)
+## Current status (2026-10-08)
 
 - **Phase 1:** done and committed.
 - **Phase 2 (import):** done.
@@ -21,6 +21,7 @@
 - **Phase 4 (match report):** done (2026-10-06). `/simplify` and `/code-review` applied; the 3 review findings were a stale report after editing the job text mid-analysis, "Atualmente"/"Actualidad" not read as present, and year-first dates ("2019-03") losing their month. `bun test` passes 48 tests; analyze → confirm → tailor ran end to end against the real model with a made-up CV. The "single-column template" readability check moves to Phase 5.
 - **Phase 5 (templates):** done (2026-10-06). `/simplify` and `/code-review` applied; the one review finding was a stray " | " in Sidebar for a role without a company. All three templates and the picker were checked in headless Firefox screenshots; `bun test` passes 48 tests.
 - **Phase 6 (review):** done (2026-10-07). `/simplify` and `/code-review` applied; the 9 review findings included two privacy leaks in instruction scanning (a name opening the instruction, names with inner capitals), a name excused by a longer one in the CV, new numbers lost on an already-flagged entry, the user's own numbers flagged, applying a review of an older version of the CV, and digits in names like S3. `bun test` passes 63 tests; review → apply → own instruction ran against the real model with a made-up CV, and in headless Firefox on a base CV and a variant.
+- **Phase 7 (choose the model, see the cost):** planned (2026-10-08). Mockups: the v5 row.
 
 ## Context
 
@@ -518,7 +519,41 @@ Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each bu
 - **Diagrams:** add `Suggestion`, `ReviewCv`, `ReviseCv`, `ReviewPanel`, `detectInText`; remove `TightenCv`.
 - **`CLAUDE.md`:** the task functions become `structureCv`, `analyzeCv`, `tailorCv`, `reviewCv`, `reviseCv`; "Tailoring and Tighten to fit record previous values" also covers Review.
 
-**Phase 7 (proposed, not designed yet): choose the model.** A model dropdown fed by an `LLM_MODELS` list in `.env` (OpenRouter reaches many vendors with one key), for example a cheap model for Tighten and a stronger one for Review and Tailor. Only models tested with structured output go in the list; with OpenRouter, restrict to providers with no data retention. Needs a mockup first.
+**Phase 7: Choose the model, and see what each run cost.** Mockups: v5 "Import", "Review panel", "Tailor panel", "After Apply" and "Model picker".
+
+- **Why:** one model for everything means living with its weak spots. With a picker you can rerun a review or a tailoring with another model when you don't like the result, and see what each run cost. You judge the models while using the tool; there is no up-front comparison and no per-task default (add one later only if you keep switching for the same task).
+- **One rule:** every screen or toolbar with a button that calls the model has one **Model** picker beside it. No exceptions, so a model that fails can always be swapped in place.
+  - Import: beside **Parse CV** (replaces the "model · set in .env" label in the header).
+  - Review panel: beside **Review again**; Apply and Send use it too.
+  - Tailor panel: beside **Analyze again**; Create variant uses it too.
+  - Preview toolbar: beside **Tighten to fit**.
+- **One shared choice** (the usual pattern in chat apps and coding tools): every picker shows the same model; change it anywhere and the others follow. It starts at the default and is remembered in the browser (`localStorage`, a per-viewer convenience). A remembered model that's no longer in `LLM_MODELS` falls back to the default. Each run sends the model id, so the server never relies on what the browser remembers.
+- **Flow:** pick a model (or leave the current one), run, and the result says which model wrote it and what it cost. Not happy? Pick another and run again.
+- **Configuration** (`.env`, no settings page): `LLM_MODELS` replaces `LLM_MODEL`. Entries are comma-separated `id tier name`; the first is the default; the name is optional (the id is shown otherwise):
+  `LLM_MODELS="deepseek/deepseek-v4.1-flash $ DeepSeek V4.1 Flash, anthropic/claude-haiku-5.5 $ Claude Haiku 5.5, anthropic/claude-sonnet-5.5 $$$ Claude Sonnet 5.5"`
+  Works with every provider: with `LLM_PROVIDER=anthropic` the ids are Claude model ids. One provider and one key at a time; mixing providers is out of scope.
+- **Cost tiers** are set by hand per model, per run: **$** under 1¢, **$$** 1–5¢, **$$$** over 5¢. The picker shows `Claude Sonnet 5.5 · $$$` (a native `<select>`); its hidden description reads "$ under 1 cent a run, $$ 1 to 5 cents, $$$ over 5 cents", so a screen reader doesn't say "dollar dollar dollar".
+- **What a result shows:** `[logo] Claude Sonnet 5.5 · $0.031`. Under 1¢ it shows three decimals ($0.004), otherwise two ($0.07). A provider that doesn't report cost (the Anthropic API) shows tokens instead: `· 8.4k tokens`.
+  - Review: in the suggestion count, `5 suggestions · [logo] DeepSeek V4.1 Flash · $0.004` (replaces the "reviewed by" stopgap).
+  - Tailor: in the match report heading.
+  - Runs that reload the editor (Create variant, Apply, Send, Tighten, Import) show it in the banner after the reload: "Review: 5 fixes applied by [logo] Claude Haiku 5.5 · $0.002", "Parsed by …".
+- **Logos:** the official mark of the model's company, beside each picker (the selected model) and on each result. Decorative (`aria-hidden`), since the name is beside it. SVGs bundled in `public/logos/` from each company's brand page, never loaded from the web; the company comes from the id's prefix (`anthropic/…`) or, for `LLM_PROVIDER=anthropic`, is Anthropic. Unknown companies get a generic icon.
+- **When a model fails:** a model that can't produce a valid structured answer changes nothing, and the panel or banner says "Claude Haiku 5.5 couldn't produce a valid answer. Nothing was changed. Pick another model and try again." (AI SDK's `NoObjectGeneratedError`, mapped in `errorMessage`).
+- **Privacy:** unchanged rules; the picker only changes which model receives the already-masked prompt. New `LLM_PROVIDER=openrouter` (CLAUDE.md already lists it; the code only had `openai-compatible`): OpenAI-compatible with OpenRouter's URL, and every request sent with `provider: { zdr: true }`, so it only reaches providers that keep no data.
+- **Schema / data:**
+  - `lib/llm/models.ts`: `listModels()` parses `LLM_MODELS` with zod at the edge (bad entry → clear startup error) into `{ id, name, tier, vendor }[]`; `defaultModel()`.
+  - `runSchema` in `schema.ts`: `{ model, costUsd: number | null, tokens }`. `CvRecord` gets `lastRun: runSchema.nullable()`, written by import, tailoring and every revise, read by the banners. Suggestions and the match report stay unsaved; their run lives in the panel with them.
+- **AI:**
+  - `provider.ts`: `getModel(id)` builds the model for an id from the list; `openrouter` added as above.
+  - `generateStructured` takes `modelId` and returns `{ output, run }`. `run.costUsd` comes from the raw response's `usage.cost` (OpenRouter), else null; `run.tokens` from the SDK's usage. All five task functions take `modelId` and return their result with `run`.
+- **Actions:** every action that calls a task function takes a `modelId`, validated against `listModels()` (never trusted from the client), and returns or stores the `run`. The editor page passes the model list to the panels.
+- **Before building, one check against the real API** (about $0.001, with your OK): one OpenRouter call confirms that `usage.cost` is in the response and that `provider: { zdr: true }` is accepted.
+- **Out of scope:** per-task default models, comparing models side by side, a running cost total per CV, price estimates beyond the tiers, fetching prices or model names from OpenRouter, mixing providers in one list.
+- **Tests:**
+  - Unit: parsing `LLM_MODELS` (default, optional name, bad tier); reading cost from a response body with and without `usage.cost`; formatting cost and tokens; an action rejects a model id not in the list; the privacy test still passes for every task with a chosen model.
+  - E2e (mock provider with two models and a `usage.cost` in its answers): picking the second model sends its id (the mock records it) and the result shows its name and cost; the choice shows in every picker and survives a reload; a failing model shows the "couldn't produce a valid answer" message and changes nothing; Tighten uses its own picker.
+- **Diagrams:** add `Models` (`listModels`, `defaultModel`), `Run`, the `openrouter` provider and `lastRun`; `generateStructured` returns a run.
+- **`CLAUDE.md` and `.env.example`:** `LLM_MODELS` replaces `LLM_MODEL`; the default model is the first entry; providers are `anthropic | openrouter | openai-compatible`.
 
 **Every phase ends with the Definition of done in `CLAUDE.md`:** `bun run check` + `bun test` pass → `/simplify` → `/code-review` → diagrams up to date → UI tried in the browser.
 
