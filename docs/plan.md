@@ -2,7 +2,7 @@
 
 > **Superseded in one respect:** contact details and the PII vault are now stored per CV (`contact` and `vault` in `cvs/<id>.json`), not in a shared `profile.json`. Where this plan says `Profile` or `profile.json`, see `docs/architecture.md` for the current design.
 
-## Current status (2026-10-06)
+## Current status (2026-10-07)
 
 - **Phase 1:** done and committed.
 - **Phase 2 (import):** done.
@@ -20,7 +20,7 @@
   - Real model calls run through OpenRouter (`deepseek/deepseek-v4.1-flash`).
 - **Phase 4 (match report):** done (2026-10-06). `/simplify` and `/code-review` applied; the 3 review findings were a stale report after editing the job text mid-analysis, "Atualmente"/"Actualidad" not read as present, and year-first dates ("2019-03") losing their month. `bun test` passes 48 tests; analyze → confirm → tailor ran end to end against the real model with a made-up CV. The "single-column template" readability check moves to Phase 5.
 - **Phase 5 (templates):** done (2026-10-06). `/simplify` and `/code-review` applied; the one review finding was a stray " | " in Sidebar for a role without a company. All three templates and the picker were checked in headless Firefox screenshots; `bun test` passes 48 tests.
-- **All planned phases are done.**
+- **Phase 6 (review):** planned (2026-10-07). Mockups: v4 row, approved.
 
 ## Context
 
@@ -451,9 +451,9 @@ Key points:
 
 ## Delivery phases
 
-Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each build phase produces a working app.
+Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each build phase produces a working app.
 
-**Phase 0: Mockups.** Done: v2 row for Phases 1–3, v3 row for Phases 4–5.
+**Phase 0: Mockups.** Done: v2 row for Phases 1–3, v3 row for Phases 4–5, v4 row for Phase 6.
 
 **Phase 1: Foundation, no AI.** ✅ Done (2026-10-05). Copy this plan to `docs/plan.md` · `docs/architecture.md`, with both class diagrams written from the drafts above · `bun run check` (`tsc --noEmit`, ESLint, Prettier, `knip`, `jscpd`) · `bun create next-app` (TS, App Router, Tailwind; Bun as package manager) · zod schema · `lib/store` + `profile.json` · Library · Editor form + Classic template preview · page-fit indicator · print export. Done when a CV can be created by hand, edited, autosaved and exported, and the diagrams match the code.
 
@@ -488,6 +488,38 @@ Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each buil
 - `src/templates/Modern.tsx`: one column, sans-serif, centered header in an accent color, skills right after the summary, role first then company, location and dates.
 - "Tighten to fit" uses each template's words per line. The ATS readability check fails "single column" for Sidebar.
 
+**Phase 6: Review a CV and apply the fixes you agree with.** Planned (2026-10-07). Mockups: v4 "Review panel on a base CV", "After Apply: changes, warning, Tighten" and "Review panel on a variant".
+
+- **Why:** a correctly imported CV isn't necessarily a good one, and "Tighten to fit" was the only way to ask the model to change a CV. Review checks it against CV best practices and lets you choose which fixes to apply.
+- **Flow:** **Review…** → the panel opens and the review runs → suggestions are checkboxes, ticked by default → untick what you disagree with → **Apply N fixes** → the CV updates with tracked changes (Was / Revert / Keep, Revert all / Keep all) → Keep or Revert. **Ask for something else** (collapsed) sends your own instruction the same way. **Tighten to fit** stays where it is, in the preview toolbar.
+- **Where it fits in the journey:** import → **review the base CV** → tailor to each job → export. Improve the base for anything true for every job; review a variant only for that application.
+- **Naming and consistency:**
+  - Header buttons: **Review…** and **Tailor to a job…** (was "Tailor…"). The panel heading is "Review this CV".
+  - `ReviewPanel` replaces the right pane like `TailorPanel` and has the same layout: heading and close button, "Review again" where "Analyze again" is, the same checkbox rows as confirming gaps, and the main button at the bottom right with a note beside it. Only one panel is open at a time.
+  - After Apply, nothing new: the changes banner, highlights and fabrication warning are the ones tailoring uses.
+  - The post-import banner adds the next step: "…Then **Review** it before you tailor it to jobs."
+- **What the review checks** (one checklist, in the prompt shared by `reviewCv` and `reviseCv`), using the norms of the field the CV shows (read from the headline and roles; no setting):
+  - Each bullet shows impact, not a duty. For engineers, impact without a number counts: scope and ownership, before → after, technical difficulty, who benefited, adoption, reliability or risk removed, leadership.
+  - Strong action verbs; no filler or clichés ("passionate", "results-driven", "responsible for", "helped with", "various").
+  - Present tense for the current role, past for the others; no "I" or "my"; one spelling variant, date format and punctuation style throughout.
+  - Summary: 2–3 lines on level and focus, not repeating the headline.
+  - Fewer bullets for older roles; vague bullets named or dropped; skills grouped, and each listed skill backed by the experience where possible.
+- **Numbers are never invented.** A suggestion that needs something only you know (a real metric) has `kind: "yours"`: it appears in the list without a checkbox and is never sent to Apply. `reviseCv` may not add a number that isn't already in the CV, and the local check below catches it if it does.
+- **Schema** (`schema.ts`): `suggestionSchema`: `{ id, section, entryId | null, problem, detail, kind: fix | yours }`. Suggestions are **not stored**: they live in the panel until it's closed; "Review again" runs a new review.
+- **AI** (both through `generateStructured`, masked with the CV's private values):
+  - `lib/llm/review.ts`: `reviewCv(content, privateValues, { report })` returns `suggestions[]`. On a variant it receives the job's match report, so it never suggests removing a requirement the CV matches.
+  - `lib/llm/revise.ts`: `reviseCv(content, instruction, privateValues, { keep })` returns the complete `CvContent`, like `tightenCv` today. It **replaces `tighten.ts`**: Tighten to fit, Apply (an instruction built from the ticked suggestions) and Ask for something else (your text) are the same call with different instructions. `keep` lists the job requirements a variant matches; the prompt keeps those terms. The rules from `tightenCv` stay: never add facts, keep ids, placeholders, language and emphasis.
+- **Actions:** `reviewAction(cvId)`; `reviseAction(cvId, request, extraMasks)` with `request` = `{ tighten: overflowLines } | { suggestions } | { instruction }`. It takes over `tightenAction` as is: save first, the editor is locked during the call, the "changed while it was being shortened" check, and `recordChanges`.
+- **Your own instruction and privacy:** your contact details and vault are masked and guarded as in every call. New: `detectInText(text, content)` in `lib/privacy/detect.ts` runs on the typed instruction. It reuses the email, phone and URL patterns and flags capitalised word pairs that look like a person's name and don't appear in the CV (so employers and schools aren't flagged). Flagged values are shown under the text box, masked by default, with **Send as written**. Masked ones are passed as extra private values for that request only; they are not added to the vault.
+- **Fabrication check:** `findFabrications` also flags **numbers** in changed text (highlights, project descriptions, other sections' entries and the summary) that are in neither the base CV nor the previous version. The warning stays "Not in your base CV: 3 teams. Keep it only if it's true." with Revert and Keep.
+- **On a variant:** the same panel. The panel note says fixes keep the job's keywords; the footer says "Fixes change only this variant. To improve every future application, review your base CV." The live match score in the header shows whether Apply changed the score.
+- **Out of scope:** choosing the model in the app (see Phase 7), saving reviews or a review history, remembering a mask from an instruction, labelling which problems also exist in the base CV.
+- **Tests:** building the Apply instruction from ticked suggestions (`yours` never included); `detectInText` (names, emails, phones; employers and schools from the CV not flagged); numbers in the fabrication check (new number flagged, number already in the base not flagged, kept number not re-flagged); the privacy test extended to `reviewCv` and `reviseCv`, including an instruction with a flagged name.
+- **Diagrams:** add `Suggestion`, `ReviewCv`, `ReviseCv`, `ReviewPanel`, `detectInText`; remove `TightenCv`.
+- **`CLAUDE.md`:** the task functions become `structureCv`, `analyzeCv`, `tailorCv`, `reviewCv`, `reviseCv`; "Tailoring and Tighten to fit record previous values" also covers Review.
+
+**Phase 7 (proposed, not designed yet): choose the model.** A model dropdown fed by an `LLM_MODELS` list in `.env` (OpenRouter reaches many vendors with one key), for example a cheap model for Tighten and a stronger one for Review and Tailor. Only models tested with structured output go in the list; with OpenRouter, restrict to providers with no data retention. Needs a mockup first.
+
 **Every phase ends with the Definition of done in `CLAUDE.md`:** `bun run check` + `bun test` pass → `/simplify` → `/code-review` → diagrams up to date → UI tried in the browser.
 
 ## Key files
@@ -496,7 +528,7 @@ Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each buil
 - `src/lib/cv/{schema,empty,format,page}.ts` (+ `fabrication.ts` in Phase 3). Empty values come from zod `.default()`s in the schema.
 - `src/lib/store/{fs,profile,cvs,imports,sources}.ts`: `fs.ts` holds the atomic write and the zod-validated read
 - `src/lib/privacy/{detect,redact,guard}.ts` (`redact.ts` also holds `rehydrate`)
-- `src/lib/llm/{provider,generate,structure}.ts` (+ `tailor.ts`, `tighten.ts` in Phase 3)
+- `src/lib/llm/{provider,generate,structure}.ts` (+ `tailor.ts`, `tighten.ts` in Phase 3; Phase 6 adds `review.ts` and replaces `tighten.ts` with `revise.ts`)
 - `src/lib/pdf/extract.ts` (+ `src/lib/job/fetch.ts` in Phase 3)
 - `src/lib/match/{score,parsability}.ts` and `src/lib/llm/analyze.ts` (Phase 4)
 - `src/templates/Classic.tsx` (+ `Sidebar.tsx`, `Modern.tsx` in Phase 5; print CSS lives in `lib/cv/page.ts` + the print route)
@@ -507,7 +539,7 @@ Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each buil
   - `src/app/cv/[id]/print/page.tsx`
   - `src/app/cv/[id]/source/route.ts`
 - **Editor and actions:**
-  - `src/components/editor/{Editor,fields,Preview,use-autosave}.tsx`
+  - `src/components/editor/{Editor,fields,Preview,use-autosave}.tsx` (+ `ReviewPanel.tsx` in Phase 6)
   - `src/app/actions.ts` (server actions)
 - `.env.example`: `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`, `DATA_DIR`
 - `docs/architecture.md`: the class diagrams (data model + components) with short explanations
@@ -515,6 +547,6 @@ Six phases: Phase 0 (mockups) is done, and Phases 1–5 are the build. Each buil
 ## Verification
 
 - **Unit (`bun test`):** the detector against 3–4 fixture CVs; redact → rehydrate round trip; the guard throws when a vault value is in the payload; store round trip (save → read → zod-valid) and the atomic write leaves no partial file; fabrication check cases.
-- **Privacy test:** a mock LLM provider records every request. Run import + analyze + tailor + tighten and assert that no vault value appears in any request.
+- **Privacy test:** a mock LLM provider records every request. Run import + analyze + tailor + tighten + review + revise (with a flagged name in the instruction) and assert that no vault value appears in any request.
 - **Diagrams:** both Mermaid blocks render without errors (GitHub preview or `bunx @mermaid-js/mermaid-cli`). At the end of each phase, check every module in `src/lib/**` and every schema in `schema.ts` against the diagram: each must appear, with no extras and no missing arrows.
-- **Manual end-to-end:** import a real CV → compare with the original and fix → export (one page, correct filename) → analyze a pasted job, tick a gap, tailor → check the score before → after and that the ticked skill isn't flagged → revert a field → export the variant in each template. Then switch `.env` to Ollama and repeat the import.
+- **Manual end-to-end:** import a real CV → compare with the original and fix → export (one page, correct filename) → analyze a pasted job, tick a gap, tailor → check the score before → after and that the ticked skill isn't flagged → revert a field → export the variant in each template. Phase 6: review the base CV, untick one suggestion, apply, check the highlights and that a new number is flagged; review a variant and check its score didn't drop; send an instruction with a colleague's name and check it was masked. Then switch `.env` to Ollama and repeat the import.
