@@ -15,7 +15,7 @@ Personal tool: 1 user, at most 3–4 people, **each running their own copy**. No
 
 ## Stack
 
-Next.js (App Router) + TypeScript + Tailwind · zod · react-hook-form · Vercel AI SDK · `unpdf` (pdf.js). **Bun** is the package manager, script runner and test runner (`bun test`); there is no npm, no lockfile other than `bun.lock`, and no Vitest/Jest. Storage is JSON files; there is no database.
+Next.js (App Router) + TypeScript + Tailwind · zod · react-hook-form · Vercel AI SDK · `unpdf` (pdf.js). **Bun** is the package manager, script runner and test runner (`bun test`); there is no npm, no lockfile other than `bun.lock`, and no Vitest/Jest. Playwright drives the browser for e2e tests. Storage is JSON files; there is no database.
 
 ## Commands
 
@@ -24,6 +24,7 @@ Available once Phase 1 sets up the project:
 - `bun install` / `bun add <pkg>` / `bun add -d <pkg>`: dependencies (never `npm`, `npx`, `yarn` or `pnpm`; use `bunx` for one-off tools)
 - `bun run dev`: start the app on localhost
 - `bun test`: unit tests (Bun's built-in runner, `*.test.ts` next to the module)
+- `bun run e2e`: browser tests (Playwright, `e2e/*.e2e.ts`). They build the app and run it on port 3100 against a temp `DATA_DIR` and a local mock model (`e2e/mock-llm.ts`), so they never make a paid call and run beside `bun run dev`. One-time setup: `bunx playwright install chromium`.
 - `bun run check`: `tsc --noEmit` + ESLint + Prettier check + `knip` (unused code/deps) + `jscpd` (duplication). **Must pass before a change is done.**
 
 ## Privacy rules (non-negotiable)
@@ -62,7 +63,7 @@ Available once Phase 1 sets up the project:
 - **Errors:** validate at the edges (uploads, file reads, LLM output, fetch) with zod. Show clear messages to the user. Never swallow errors silently.
 - **Dependencies:** add one only when it clearly saves meaningful code. Prefer the platform: browser print for PDF export, `fetch`, `crypto.randomUUID`.
 - **UI:** match the v2 mockups. Use real `<button>`, `<a>`, `<label>` and `<input>` elements, with touch targets of at least 44px. Use the shared tokens (one accent, amber only for masked personal data).
-- **Tests:** unit-test the logic modules (privacy, store, fabrication check, schema). No snapshot tests of the UI.
+- **Tests:** unit-test the logic modules (privacy, store, fabrication check, schema). No snapshot tests of the UI. E2e tests cover user flows that unit tests can't reach (panels, background calls); they never call a real model, and they check that no contact detail reaches the mock.
 
 ## Architecture diagrams
 
@@ -73,11 +74,11 @@ Available once Phase 1 sets up the project:
 
 For each change or phase:
 
-1. `bun run check` and `bun test` pass.
+1. `bun run check`, `bun test` and `bun run e2e` pass.
 2. `/simplify` has been run on the change and its fixes reviewed.
 3. `/code-review` shows no unresolved findings.
 4. `docs/architecture.md` is up to date.
-5. Where the change has a UI, it was tried in the browser.
+5. Where the change has a UI, it was looked at in the browser (screenshots are fine), and a new flow, especially one with background calls or state that survives navigation, gets an e2e test.
 
 ## Out of scope (don't add without asking)
 
