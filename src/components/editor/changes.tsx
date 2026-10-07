@@ -11,7 +11,8 @@ import {
   revertChange,
 } from "@/lib/cv/changes";
 import { entryValues, joinFilled, plural } from "@/lib/cv/format";
-import type { EditorValues, Job, ListSection } from "@/lib/cv/schema";
+import type { EditorValues, Job, ListSection, Run } from "@/lib/cv/schema";
+import { RunInfo } from "@/components/model";
 
 /** Tracked changes (from tailoring, a review or "Tighten to fit") and the actions on them; autosave persists both. */
 export function useChanges() {
@@ -84,7 +85,14 @@ function ChangeRow({
   );
 }
 
-export function ChangesBanner({ job }: { job: Job | null }) {
+export function ChangesBanner({
+  job,
+  run,
+}: {
+  job: Job | null;
+  /** The last model call that changed this CV (changes can add up over several). */
+  run: Run | null;
+}) {
   const { count, revertAll, keepAll } = useChanges();
   if (!count) return null;
   return (
@@ -101,6 +109,12 @@ export function ChangesBanner({ job }: { job: Job | null }) {
         </strong>{" "}
         {plural(count, "change")}, highlighted below. Edit anything, or revert
         or keep each change.
+        {run && (
+          <>
+            {" "}
+            Last run: <RunInfo run={run} />.
+          </>
+        )}
       </span>
       <button
         type="button"

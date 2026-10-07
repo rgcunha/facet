@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
+import { ModelPicker } from "@/components/model";
 import { plural } from "@/lib/cv/format";
 import { PAGE, PAGE_CONTENT_HEIGHT_MM, PX_PER_MM } from "@/lib/cv/page";
 import { type CvView, type EditorValues, TEMPLATE_IDS } from "@/lib/cv/schema";
@@ -143,14 +144,17 @@ export function Preview({
             : `${plural(overflowLines, "line")} over ${plural(target, "page")}`}
         </span>
         {!fits && onTighten && (
-          <button
-            type="button"
-            className="btn-secondary min-h-[38px]"
-            disabled={tightening}
-            onClick={() => onTighten(overflowLines)}
-          >
-            {tightening ? "Tightening…" : "Tighten to fit"}
-          </button>
+          <>
+            <ModelPicker inline disabled={tightening} />
+            <button
+              type="button"
+              className="btn-secondary min-h-[38px]"
+              disabled={tightening}
+              onClick={() => onTighten(overflowLines)}
+            >
+              {tightening ? "Tightening…" : "Tighten to fit"}
+            </button>
+          </>
         )}
       </div>
       {tab === "preview" && (

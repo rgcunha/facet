@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import type { CvContent, PrivateValue, Suggestion } from "@/lib/cv/schema";
 import {
   CV_PRACTICE,
@@ -11,6 +10,7 @@ import {
   withIds,
 } from "./content";
 import { generateStructured } from "./generate";
+import type { ModelRef } from "./provider";
 
 const SYSTEM = `You edit a CV as instructed. You return the complete CV content, edited.
 
@@ -52,14 +52,14 @@ export async function reviseCv(
   instruction: string,
   privateValues: PrivateValue[],
   { keep = [] as string[] } = {},
-  model?: LanguageModel,
-): Promise<CvContent> {
-  const result = await generateStructured({
+  model: ModelRef,
+) {
+  const { output, run } = await generateStructured({
     schema: modelContentSchema("keep"),
     system: SYSTEM + keepTermsRule(keep),
     prompt: `Instruction:\n\n${instruction}\n\nCV (JSON):\n\n${JSON.stringify(content)}`,
     privateValues,
     model,
   });
-  return withIds(result, idsOf(content));
+  return { content: withIds(output, idsOf(content)), run };
 }

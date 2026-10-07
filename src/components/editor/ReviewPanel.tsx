@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useWatch } from "react-hook-form";
 import { type ReviseRequest, reviewAction } from "@/app/actions";
+import { ModelPicker, RunInfo, useModel } from "@/components/model";
 import { joinFilled, plural, SECTION_TITLES } from "@/lib/cv/format";
 import type {
   CvContent,
   EditorValues,
   PrivateValue,
+  Run,
   Suggestion,
 } from "@/lib/cv/schema";
 import { detectInText } from "@/lib/privacy/detect";
@@ -44,10 +46,9 @@ export function ReviewPanel({
   /** `snapshot` is the CV as it was reviewed: suggestions quote its words, so they don't apply once it's edited. */
   const [result, setResult] = useState<{
     suggestions: Suggestion[];
-    model: string;
+    run: Run;
     snapshot: string;
   }>();
-  const suggestions = result?.suggestions;
   const [unticked, setUnticked] = useState<number[]>([]);
   const [error, setError] = useState<string>();
   const [reviewing, startReview] = useTransition();
@@ -55,13 +56,14 @@ export function ReviewPanel({
   const [instruction, setInstruction] = useState("");
   const [sendAsWritten, setSendAsWritten] = useState<string[]>([]);
   const content = useWatch<EditorValues, "content">({ name: "content" });
+  const model = useModel();
 
   const review = () => {
     setError(undefined);
     const run = track(async () => {
       if (!(await saveFirst())) return SAVE_FAILED;
       const snapshot = JSON.stringify(content);
-      const answer = await reviewAction(cvId);
+      const answer = await reviewAction(cvId, model?.id ?? "");
       if ("error" in answer) return answer.error;
       setResult({ ...answer, snapshot });
       setUnticked([]);
@@ -88,7 +90,7 @@ export function ReviewPanel({
 
   const busy = reviewing || revising;
   const stale = !!result && JSON.stringify(content) !== result.snapshot;
-  const all = (suggestions ?? []).map((s, i) => ({
+  const all = (result?.suggestions ?? []).map((s, i) => ({
     ...s,
     i,
     section: sectionLabel(content, s),
@@ -126,14 +128,17 @@ export function ReviewPanel({
           {variant && " Fixes keep the keywords the job asks for."} Untick
           anything you disagree with.
         </p>
-        <button
-          type="button"
-          className="btn-secondary ml-auto"
-          onClick={review}
-          disabled={busy}
-        >
-          {reviewing ? "Reviewing…" : "Review again"}
-        </button>
+        <div className="ml-auto flex flex-wrap items-end gap-3">
+          <ModelPicker disabled={busy} />
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={review}
+            disabled={busy}
+          >
+            {reviewing ? "Reviewing…" : "Review again"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -145,26 +150,26 @@ export function ReviewPanel({
         </p>
       )}
 
-      {reviewing && !suggestions && (
+      {reviewing && !result && (
         <p role="status" className="text-sm text-muted">
           Reviewing your CV… This can take a minute.
         </p>
       )}
 
-      {suggestions?.length === 0 && (
+      {result?.suggestions.length === 0 && (
         <p role="status" className="text-sm">
-          No suggestions from {result?.model}: your CV already follows good
-          practice.
+          No suggestions from <RunInfo run={result.run} />: your CV already
+          follows good practice.
         </p>
       )}
 
-      {suggestions && suggestions.length > 0 && (
+      {result && result.suggestions.length > 0 && (
         <fieldset className="flex flex-col gap-4" disabled={busy}>
           <legend className="mb-1 text-[13px] font-semibold tracking-wide text-muted uppercase">
-            {plural(suggestions.length, "suggestion")}
+            {plural(result.suggestions.length, "suggestion")}
             <span className="font-normal tracking-normal normal-case">
               {" "}
-              · reviewed by {result?.model}
+              · <RunInfo run={result.run} />
             </span>
           </legend>
           {sections.map((section) => (

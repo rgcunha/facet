@@ -38,9 +38,10 @@ Available once Phase 1 sets up the project:
 
 ## Vendor-agnostic LLM
 
-- The provider is chosen only through `.env`: `LLM_PROVIDER=anthropic|openrouter|openai-compatible`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`.
+- The provider is chosen only through `.env`: `LLM_PROVIDER=anthropic|openrouter|openai-compatible`, `LLM_MODELS`, `LLM_API_KEY`, `LLM_BASE_URL`. `LLM_MODELS` lists the models the user can pick (`id tier name`, comma-separated, first = default); `lib/llm/models.ts` parses it, and actions accept only ids from it. `openrouter` sends every request with zero data retention.
+- Every screen or toolbar with a button that calls the model has one shared Model picker beside it, and every result shows the model and the cost (`Run`).
 - App code calls task functions in `lib/llm` (`structureCv`, `analyzeCv`, `tailorCv`, `reviewCv`, `reviseCv`). Nothing provider-specific belongs outside `lib/llm/provider.ts`.
-- Structured output uses AI SDK 7's `generateText` with `Output.object({ schema })` (`generateObject` is deprecated), with schemas derived from `lib/cv/schema.ts`. The default model is `claude-opus-5-5`; the Anthropic provider picks native structured output for models that reject forced tool use.
+- Structured output uses AI SDK 7's `generateText` with `Output.object({ schema })` (`generateObject` is deprecated), with schemas derived from `lib/cv/schema.ts`. The default model is the first entry of `LLM_MODELS`; the Anthropic provider picks native structured output for models that reject forced tool use.
 
 ## Persistence
 

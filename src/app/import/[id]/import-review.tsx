@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import type { ImportDraft, PrivateValue } from "@/lib/cv/schema";
+import { ModelPicker, useModel } from "@/components/model";
 import { plural } from "@/lib/cv/format";
 import {
   redact,
@@ -18,6 +19,7 @@ export function ImportReview({ draft }: { draft: ImportDraft }) {
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   const previewRef = useRef<HTMLDivElement>(null);
+  const model = useModel();
 
   const masked = [
     ...draft.detected.filter((d) => !unmasked.includes(d.value)),
@@ -50,7 +52,7 @@ export function ImportReview({ draft }: { draft: ImportDraft }) {
   const parse = () => {
     setError(undefined);
     startTransition(async () => {
-      const result = await parseImportAction(draft.id, masked);
+      const result = await parseImportAction(draft.id, masked, model?.id ?? "");
       if (result) setError(result.error);
     });
   };
@@ -77,14 +79,17 @@ export function ImportReview({ draft }: { draft: ImportDraft }) {
             parse.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-primary min-h-12 px-6 text-base"
-          onClick={parse}
-          disabled={pending}
-        >
-          {pending ? "Parsing…" : "Parse CV →"}
-        </button>
+        <div className="flex flex-wrap items-end gap-3">
+          <ModelPicker disabled={pending} />
+          <button
+            type="button"
+            className="btn-primary min-h-12 px-6 text-base"
+            onClick={parse}
+            disabled={pending}
+          >
+            {pending ? "Parsing…" : "Parse CV →"}
+          </button>
+        </div>
       </div>
       {error && (
         <p

@@ -1,8 +1,8 @@
-import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { PrivateValue } from "@/lib/cv/schema";
 import { modelContentSchema, PLACEHOLDER_RULE, withIds } from "./content";
 import { generateStructured } from "./generate";
+import type { ModelRef } from "./provider";
 
 const SYSTEM = `You convert the plain text of a CV (extracted from a PDF) into structured data.
 
@@ -21,9 +21,9 @@ const SYSTEM = `You convert the plain text of a CV (extracted from a PDF) into s
 export async function structureCv(
   text: string,
   privateValues: PrivateValue[],
-  model?: LanguageModel,
+  model: ModelRef,
 ) {
-  const parsed = await generateStructured({
+  const { output, run } = await generateStructured({
     schema: modelContentSchema("omit").extend({
       language: z
         .string()
@@ -34,5 +34,5 @@ export async function structureCv(
     privateValues,
     model,
   });
-  return { content: withIds(parsed), language: String(parsed.language) };
+  return { content: withIds(output), language: String(output.language), run };
 }

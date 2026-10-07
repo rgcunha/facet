@@ -165,6 +165,13 @@ const changesSchema = z.object({
   flags: listOf(z.object({ key: z.string(), facts: z.array(z.string()) })),
 });
 
+/** One call to the model: which model ran, what the provider charged (null if it doesn't say) and the tokens used. */
+const runSchema = z.object({
+  model: z.string(),
+  costUsd: z.number().nonnegative().nullable(),
+  tokens: z.number().int().nonnegative(),
+});
+
 export const cvRecordSchema = z.object({
   v: z.literal(1),
   id: cvIdSchema,
@@ -185,6 +192,8 @@ export const cvRecordSchema = z.object({
   job: jobSchema.nullable().default(null),
   /** What tailoring, a review or "Tighten to fit" changed, until the user reverts or keeps each change. */
   changes: changesSchema.prefault({}),
+  /** The last model call that changed this CV (import, tailoring or an edit), for its banner. */
+  lastRun: runSchema.nullable().default(null),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -221,5 +230,6 @@ export type Changes = z.infer<typeof changesSchema>;
 export type Analysis = z.infer<typeof analysisSchema>;
 export type MatchReport = z.infer<typeof matchReportSchema>;
 export type Suggestion = z.infer<typeof suggestionSchema>;
+export type Run = z.infer<typeof runSchema>;
 /** A CV as templates render it and the match score reads it. */
 export type CvView = Pick<EditorValues, "contact" | "content" | "template">;

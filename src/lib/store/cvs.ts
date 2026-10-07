@@ -72,6 +72,7 @@ type CvInit = Partial<
     | "content"
     | "job"
     | "changes"
+    | "lastRun"
   >
 >;
 

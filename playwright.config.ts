@@ -12,7 +12,7 @@ const MOCK_PORT = 3101;
 Object.assign(process.env, {
   LLM_PROVIDER: "openai-compatible",
   LLM_BASE_URL: `http://localhost:${MOCK_PORT}/v1`,
-  LLM_MODEL: "mock",
+  LLM_MODELS: "mock-fast $ Mock Fast, mock-good $$$ Mock Good",
   LLM_API_KEY: "mock",
 });
 process.env.DATA_DIR ??= mkdtempSync(path.join(os.tmpdir(), "cv-tool-e2e-"));

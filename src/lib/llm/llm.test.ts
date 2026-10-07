@@ -30,11 +30,15 @@ Lead Backend Engineer, Orbital Pay · 2021 – Present
 PROJECTS
 Ledger tool — github.com/alexmoreno`;
 
-/** A provider stand-in that records exactly what would have been sent and answers with fixed JSON. */
-function recordingModel(answer: object) {
+/**
+ * A provider stand-in that records exactly what would have been sent and answers with fixed JSON (or
+ * with `text` as is). `body` is the raw response, where OpenRouter reports the cost.
+ */
+function recordingModel(answer: object, { text = "", body = {} } = {}) {
   return new MockLanguageModelV4({
     doGenerate: async () => ({
-      content: [{ type: "text", text: JSON.stringify(answer) }],
+      content: [{ type: "text", text: text || JSON.stringify(answer) }],
+      response: { body },
       finishReason: { unified: "stop", raw: undefined },
       usage: {
         inputTokens: {
@@ -92,6 +96,32 @@ test("a reformatted phone number is masked, never sent", async () => {
   const sent = JSON.stringify(model.doGenerateCalls);
   expect(sent).toContain("{{PHONE}}");
   expect(sent.replace(/\D/g, "")).not.toContain("351912000000");
+});
+
+test("a run names the model and reads the cost the provider reports, if any", async () => {
+  const call = (body: object) =>
+    generateStructured({
+      schema: z.object({ ok: z.boolean() }),
+      system: "Answer",
+      prompt: "Hello",
+      privateValues,
+      model: recordingModel({ ok: true }, { body }),
+    });
+  const { run } = await call({ usage: { cost: 0.0042 } });
+  expect(run).toEqual({ model: "mock-model-id", costUsd: 0.0042, tokens: 2 });
+  expect((await call({})).run.costUsd).toBeNull();
+});
+
+test("an answer that doesn't fit the schema asks for another model", async () => {
+  await expect(
+    generateStructured({
+      schema: z.object({ ok: z.boolean() }),
+      system: "Answer",
+      prompt: "Hello",
+      privateValues,
+      model: recordingModel({}, { text: "not JSON" }),
+    }),
+  ).rejects.toThrow(/couldn't produce a valid answer.*Pick another model/);
 });
 
 test("the guard blocks a private value wherever masking doesn't reach (here: the system prompt)", async () => {
@@ -237,7 +267,7 @@ test("analysis masks the CV's private values and returns the report", async () =
   };
   const model = recordingModel(answer);
 
-  const report = await analyzeCv(
+  const { analysis: report } = await analyzeCv(
     content,
     "We need Kubernetes and Helm. Ask Alex Moreno for details.",
     privateValues,
@@ -286,7 +316,7 @@ test("a review masks the CV's private values and passes on the job's keywords", 
       },
     ],
   });
-  const { suggestions, model: name } = await reviewCv(
+  const { suggestions, run } = await reviewCv(
     { ...emptyContent(), summary: "Alex Moreno runs Kubernetes." },
     privateValues,
     { keep: ["Kubernetes"] },
@@ -296,7 +326,7 @@ test("a review masks the CV's private values and passes on the job's keywords", 
   for (const { value } of privateValues) expect(sent).not.toContain(value);
   expect(sent).toContain("Keep these terms wherever they appear");
   expect(suggestions[0].problem).toBe("Names Alex Moreno in the third person");
-  expect(name).toBe(model.modelId);
+  expect(run.model).toBe(model.modelId);
 });
 
 test("revising masks names in the user's instruction as well as the CV, and keeps entry ids", async () => {
@@ -310,7 +340,7 @@ test("revising masks names in the user's instruction as well as the CV, and keep
     summary: "Builds ledgers with {{NAME_2}}'s team.",
   });
   const colleague: PrivateValue = { kind: "name", value: "Marta Silva" };
-  const revised = await reviseCv(
+  const { content: revised } = await reviseCv(
     content,
     "Mention that I built ledgers with Marta Silva's team.",
     [...privateValues, colleague],

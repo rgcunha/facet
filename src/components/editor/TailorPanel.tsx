@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { analyzeAction, fetchJobAction, tailorAction } from "@/app/actions";
+import { ModelPicker, useModel } from "@/components/model";
 import { plural } from "@/lib/cv/format";
-import type { Analysis } from "@/lib/cv/schema";
+import type { Analysis, Run } from "@/lib/cv/schema";
 import { MatchReport } from "./MatchReport";
 import { SAVE_FAILED } from "./use-autosave";
 
@@ -43,14 +44,17 @@ export function TailorPanel({
   const [fetching, startFetch] = useTransition();
   const [tailoring, startTailor] = useTransition();
   const [analyzing, startAnalyze] = useTransition();
-  const [report, setReport] = useState<Analysis>();
+  /** The match report and the model call that wrote it. */
+  const [analyzed, setAnalyzed] = useState<{ report: Analysis; run: Run }>();
+  const report = analyzed?.report;
   const [confirmed, setConfirmed] = useState<string[]>([]);
   const busy = analyzing || tailoring;
+  const model = useModel();
 
   // A report belongs to the job text it was made from.
   const changeJobText = (text: string) => {
     setJobText(text);
-    setReport(undefined);
+    setAnalyzed(undefined);
   };
 
   const fetchJob = () => {
@@ -67,9 +71,9 @@ export function TailorPanel({
     setError(undefined);
     const run = track(async () => {
       if (!(await saveFirst())) return SAVE_FAILED;
-      const result = await analyzeAction(cvId, jobText);
+      const result = await analyzeAction(cvId, jobText, model?.id ?? "");
       if ("error" in result) return result.error;
-      setReport(result.report);
+      setAnalyzed(result);
       setConfirmed([]);
     });
     startAnalyze(async () => setError(await run));
@@ -93,6 +97,7 @@ export function TailorPanel({
         pages,
         report: analysis,
         confirmed,
+        model: model?.id ?? "",
       });
       return result?.error; // On success the variant opens.
     });
@@ -193,8 +198,13 @@ export function TailorPanel({
         </p>
       )}
 
-      {report && (
-        <MatchReport report={report} confirmed={confirmed} onToggle={toggle} />
+      {analyzed && (
+        <MatchReport
+          report={analyzed.report}
+          run={analyzed.run}
+          confirmed={confirmed}
+          onToggle={toggle}
+        />
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
@@ -203,7 +213,8 @@ export function TailorPanel({
           personal details masked. The score is computed on your computer.
           Nothing should be invented; anything new is flagged for you.
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="ml-auto flex flex-wrap items-end gap-2">
+          <ModelPicker disabled={busy} />
           <button
             type="button"
             className={

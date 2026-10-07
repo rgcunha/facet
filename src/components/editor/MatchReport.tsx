@@ -2,7 +2,8 @@
 
 import { useDeferredValue, useId, useMemo } from "react";
 import { useWatch } from "react-hook-form";
-import type { Analysis, CvView, EditorValues } from "@/lib/cv/schema";
+import { RunInfo } from "@/components/model";
+import type { Analysis, CvView, EditorValues, Run } from "@/lib/cv/schema";
 import { type MatchScore, scoreCv } from "@/lib/match/score";
 
 /** The score of what is in the form now, recomputed as the user edits. */
@@ -92,12 +93,15 @@ export function MatchReport({
   confirmed,
   onToggle,
   before,
+  run,
 }: {
   report: Analysis;
   confirmed: string[];
   onToggle?: (name: string) => void;
   /** The base CV's score, on a variant. */
   before?: MatchScore;
+  /** The model call that wrote the report, in the Tailor panel. */
+  run?: Run;
 }) {
   const score = useLiveScore(report);
   const headingId = useId();
@@ -130,6 +134,12 @@ export function MatchReport({
             className="text-[13px] font-semibold tracking-wide text-muted uppercase"
           >
             Match report
+            {run && (
+              <span className="font-normal tracking-normal normal-case">
+                {" "}
+                · <RunInfo run={run} />
+              </span>
+            )}
           </h3>
           <div className="text-5xl leading-none">
             <ScoreChange before={before} score={score} />

@@ -1,4 +1,9 @@
-import { type CvContent, LIST_SECTIONS, type ListSection } from "./schema";
+import {
+  type CvContent,
+  LIST_SECTIONS,
+  type ListSection,
+  type Run,
+} from "./schema";
 
 /** Trimmed, non-empty values only. Editors keep raw text (so an empty entry can be typed into); display filters here. */
 export const filled = (values: string[]) =>
@@ -36,6 +41,14 @@ export const plural = (n: number, word: string, many = `${word}s`) =>
   `${n} ${n === 1 ? word : many}`;
 
 export const digits = (s: string) => s.replace(/\D/g, "");
+
+/** What a model call cost ("$0.004", "$0.07"), or its tokens ("8.4k tokens") when the provider doesn't say. */
+export function runCost({ costUsd, tokens }: Run) {
+  if (costUsd === null)
+    return `${tokens < 1000 ? tokens : `${(tokens / 1000).toFixed(1)}k`} tokens`;
+  if (costUsd < 0.001) return "under $0.001";
+  return `$${costUsd.toFixed(costUsd < 0.01 ? 3 : 2)}`;
+}
 
 /**
  * Inline emphasis in a list item: "**bold**" and "*italic*", the markdown people already type.

@@ -4,8 +4,15 @@ import Link from "next/link";
 import { Activity, useState, useTransition } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { joinFilled, range, SECTION_TITLES } from "@/lib/cv/format";
-import type { CvView, EditorValues, Job, PrivateValue } from "@/lib/cv/schema";
+import type {
+  CvView,
+  EditorValues,
+  Job,
+  PrivateValue,
+  Run,
+} from "@/lib/cv/schema";
 import { type ReviseRequest, reviseAction } from "@/app/actions";
+import { RunInfo, useModel } from "@/components/model";
 import { ChangesBanner, FabricationWarnings, FieldChange } from "./changes";
 import {
   Card,
@@ -41,6 +48,7 @@ export function Editor({
   job,
   base,
   openTailor = false,
+  lastRun,
 }: {
   id: string;
   defaultValues: EditorValues;
@@ -51,6 +59,8 @@ export function Editor({
   job: Job | null;
   base?: CvView;
   openTailor?: boolean;
+  /** The last model call that changed this CV, shown in its banner. */
+  lastRun: Run | null;
 }) {
   const form = useForm<EditorValues>({ defaultValues });
   const [showImportBanner, setShowImportBanner] = useState(justImported);
@@ -65,6 +75,7 @@ export function Editor({
   const [revising, startRevise] = useTransition();
   const { status, flush } = useAutosave(form, id);
   const baseScore = useBaseScore(base, job?.report ?? undefined);
+  const model = useModel();
 
   // Saved first, so the model edits what is on screen; the page then reloads with the result.
   const revise = (request: ReviseRequest, masks?: PrivateValue[]) => {
@@ -72,7 +83,7 @@ export function Editor({
     startRevise(async () => {
       setReviseError(undefined);
       const result = (await flush())
-        ? await reviseAction(id, request, masks)
+        ? await reviseAction(id, request, model?.id ?? "", masks)
         : { error: SAVE_FAILED };
       if (result) setReviseError(result.error);
     });
@@ -180,9 +191,16 @@ export function Editor({
             className="flex flex-wrap items-center gap-4 rounded-lg bg-accent/10 px-4 py-3 text-sm"
           >
             <span className="flex-[1_1_400px]">
-              <strong>Parsed.</strong> Compare with your original on the right
-              and fix anything that landed in the wrong place. Then{" "}
-              <strong>Review</strong> it before you tailor it to jobs.
+              <strong>Parsed</strong>
+              {lastRun && (
+                <>
+                  {" "}
+                  by <RunInfo run={lastRun} />
+                </>
+              )}
+              . Compare with your original on the right and fix anything that
+              landed in the wrong place. Then <strong>Review</strong> it before
+              you tailor it to jobs.
             </span>
             <button
               type="button"
@@ -196,7 +214,7 @@ export function Editor({
       )}
 
       <div className="mx-auto flex max-w-[1392px] flex-col gap-2.5 px-6 pt-4 empty:hidden">
-        <ChangesBanner job={job} />
+        <ChangesBanner job={job} run={lastRun} />
         <FabricationWarnings />
         {reviseError && (
           <p

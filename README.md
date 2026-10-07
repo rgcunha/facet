@@ -20,10 +20,13 @@ Your CVs are stored as JSON in `./data` (or `DATA_DIR`). Back up that folder to 
 
 Drop a PDF on the start page. It's read on your computer and your personal details (name, email, phone, address, links, date of birth) are found and masked. The Import screen shows **exactly** the text that will be sent to the language model; you can unmask a detail, or select any other text (a referee's name, say) and mask it too. **Parse CV** then sends only that masked text; the real values are filled back in locally.
 
-Importing needs a language model, configured in `.env` (see `.env.example`):
+Importing needs a language model, configured in `.env` (see `.env.example`). `LLM_MODELS` lists the models you can pick in the app: comma-separated `id tier name`, where the tier is the rough cost of one run (`$` under 1¢, `$$` 1–5¢, `$$$` over 5¢) and the first is the default.
 
-- **Claude:** `LLM_PROVIDER=anthropic`, `LLM_MODEL=claude-opus-5-5`, `LLM_API_KEY=<your Anthropic key>`
-- **OpenRouter, Ollama, LM Studio:** `LLM_PROVIDER=openai-compatible`, plus `LLM_BASE_URL`, `LLM_MODEL` and, if needed, `LLM_API_KEY`
+- **OpenRouter** (many vendors, one key; requests only go to providers that keep no data): `LLM_PROVIDER=openrouter`, `LLM_API_KEY=<your OpenRouter key>`, `LLM_MODELS="deepseek/deepseek-v4.1-flash $ DeepSeek V4.1 Flash, anthropic/claude-sonnet-5.5 $$$ Claude Sonnet 5.5"`
+- **Claude:** `LLM_PROVIDER=anthropic`, `LLM_API_KEY=<your Anthropic key>`, `LLM_MODELS="claude-opus-5-5 $$$ Claude Opus 5.5"`
+- **Ollama, LM Studio:** `LLM_PROVIDER=openai-compatible`, `LLM_BASE_URL`, `LLM_MODELS="<model> $"` and, if needed, `LLM_API_KEY`
+
+Every button that calls the model has a **Model** picker beside it; your choice applies everywhere and is remembered. Each result shows which model wrote it and what it cost (or the tokens used, for providers that don't report a cost). If a model can't produce a valid answer, nothing changes and you're asked to pick another.
 
 Scanned PDFs (images without a text layer) can't be imported yet.
 

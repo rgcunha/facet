@@ -48,9 +48,11 @@ async function openNewCv(page: Page) {
   };
 }
 
-const resetMock = (failing = false) =>
-  fetch(`${mock}/reset`, { method: "POST", body: JSON.stringify({ failing }) });
-const mockCalls = async () => (await fetch(`${mock}/calls`)).json();
+/** How the mock's next calls end: `failing` (an API error) or `invalid` (an answer that doesn't fit). */
+const resetMock = (end: { failing?: boolean; invalid?: boolean } = {}) =>
+  fetch(`${mock}/reset`, { method: "POST", body: JSON.stringify(end) });
+const mockCalls = async (): Promise<{ model: string }[]> =>
+  (await fetch(`${mock}/calls`)).json();
 
 test.beforeEach(() => resetMock());
 
@@ -72,7 +74,7 @@ test("a closed panel keeps its work", async ({ page }) => {
 
   await review.click();
   await expect(reviewPanel.getByText("2 suggestions")).toBeVisible();
-  await expect(reviewPanel.getByText("· reviewed by mock")).toBeVisible();
+  await expect(reviewPanel.getByText("Mock Fast · $0.002")).toBeVisible();
   await review.click();
   await review.click();
   await expect(reviewPanel.getByText("2 suggestions")).toBeVisible();
@@ -100,7 +102,7 @@ test("a review keeps running while its panel is closed", async ({ page }) => {
 });
 
 test("a review that fails while closed reopens its panel", async ({ page }) => {
-  await resetMock(true);
+  await resetMock({ failing: true });
   const { review, reviewPanel } = await openNewCv(page);
 
   await review.click();
@@ -125,4 +127,37 @@ test("editing while the panel is closed marks the review out of date", async ({
   await expect(
     reviewPanel.getByRole("button", { name: /Apply|Nothing to apply/ }),
   ).toBeDisabled();
+});
+
+test("the picked model runs, shows its cost, and is the choice of every picker", async ({
+  page,
+}) => {
+  const { review, reviewPanel } = await openNewCv(page);
+  const picker = () => page.getByLabel("Model").filter({ visible: true });
+
+  await review.click();
+  await expect(reviewPanel.getByText("Mock Fast · $0.002")).toBeVisible();
+  await picker().selectOption("mock-good");
+  await reviewPanel.getByRole("button", { name: "Review again" }).click();
+  await expect(reviewPanel.getByText("Mock Good · $0.03")).toBeVisible();
+  expect((await mockCalls()).map((call) => call.model)).toEqual([
+    "mock-fast",
+    "mock-good",
+  ]);
+
+  // The same choice beside Tighten to fit, and after a reload.
+  await review.click();
+  await expect(picker()).toHaveValue("mock-good");
+  await page.reload();
+  await expect(picker()).toHaveValue("mock-good");
+});
+
+test("an answer that doesn't fit asks for another model", async ({ page }) => {
+  await resetMock({ invalid: true });
+  const { review, reviewPanel } = await openNewCv(page);
+
+  await review.click();
+  await expect(reviewPanel.getByRole("alert")).toHaveText(
+    "Mock Fast couldn't produce a valid answer. Nothing was changed. Pick another model and try again.",
+  );
 });

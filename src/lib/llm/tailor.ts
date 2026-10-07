@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import { z } from "zod";
 import { plural } from "@/lib/cv/format";
 import type { CvContent, MatchReport, PrivateValue } from "@/lib/cv/schema";
@@ -10,6 +9,7 @@ import {
   withIds,
 } from "./content";
 import { generateStructured } from "./generate";
+import type { ModelRef } from "./provider";
 
 const tailoredSchema = z.object({
   content: modelContentSchema("keep"),
@@ -53,9 +53,9 @@ export async function tailorCv(
     report: Pick<MatchReport, "confirmed" | "suggestions">;
   },
   privateValues: PrivateValue[],
-  model?: LanguageModel,
+  model: ModelRef,
 ) {
-  const result = await generateStructured({
+  const { output, run } = await generateStructured({
     schema: tailoredSchema,
     system: SYSTEM,
     prompt: [
@@ -69,5 +69,5 @@ export async function tailorCv(
     privateValues,
     model,
   });
-  return { ...result, content: withIds(result.content, idsOf(content)) };
+  return { ...output, content: withIds(output.content, idsOf(content)), run };
 }

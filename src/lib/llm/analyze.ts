@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import {
   analysisSchema,
   type CvContent,
@@ -6,6 +5,7 @@ import {
 } from "@/lib/cv/schema";
 import { PLACEHOLDER_RULE } from "./content";
 import { generateStructured } from "./generate";
+import type { ModelRef } from "./provider";
 
 const SYSTEM = `You compare a CV with one job posting, the way a careful recruiter and an applicant tracking system would.
 
@@ -26,13 +26,14 @@ export async function analyzeCv(
   content: CvContent,
   jobText: string,
   privateValues: PrivateValue[],
-  model?: LanguageModel,
+  model: ModelRef,
 ) {
-  return generateStructured({
+  const { output, run } = await generateStructured({
     schema: analysisSchema,
     system: SYSTEM,
     prompt: `Job posting:\n\n${jobText}\n\nCV (JSON):\n\n${JSON.stringify(content)}`,
     privateValues,
     model,
   });
+  return { analysis: output, run };
 }

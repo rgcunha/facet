@@ -1,7 +1,9 @@
 /**
  * An OpenAI-compatible stand-in for the model provider, so e2e tests make no paid calls. It records
- * every request (tests check them for personal data) and answers a review with fixed suggestions.
- * GET /calls lists the recorded requests; POST /reset clears them and sets whether the next calls fail.
+ * every request (tests check them for personal data and the model asked for) and answers a review
+ * with fixed suggestions, reporting a cost per model like OpenRouter does.
+ * GET /calls lists the recorded requests. POST /reset clears them and sets how the next calls end:
+ * `failing` (an API error) or `invalid` (an answer that doesn't fit the schema).
  */
 const port = Number(new URL(process.env.LLM_BASE_URL!).port);
 // Long enough for a test to close the panel while the call is still running.
@@ -28,6 +30,8 @@ const SUGGESTIONS = {
 
 let calls: unknown[] = [];
 let failing = false;
+let invalid = false;
+const COST: Record<string, number> = { "mock-fast": 0.002, "mock-good": 0.031 };
 
 Bun.serve({
   port,
@@ -36,10 +40,11 @@ Bun.serve({
     if (pathname === "/calls") return Response.json(calls);
     if (pathname === "/reset") {
       calls = [];
-      ({ failing } = await request.json());
+      ({ failing = false, invalid = false } = await request.json());
       return new Response(null, { status: 204 });
     }
-    calls.push(await request.json());
+    const call = await request.json();
+    calls.push(call);
     await Bun.sleep(DELAY_MS);
     // 400, not 5xx: the AI SDK retries server errors.
     if (failing)
@@ -55,11 +60,19 @@ Bun.serve({
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: JSON.stringify(SUGGESTIONS) },
+          message: {
+            role: "assistant",
+            content: invalid ? "not JSON" : JSON.stringify(SUGGESTIONS),
+          },
           finish_reason: "stop",
         },
       ],
-      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        total_tokens: 2,
+        cost: COST[call.model] ?? 0,
+      },
     });
   },
 });

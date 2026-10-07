@@ -11,6 +11,7 @@ import {
   editorValuesSchema,
   type PrivateValue,
   privateValueSchema,
+  type Run,
   type Suggestion,
   suggestionSchema,
 } from "@/lib/cv/schema";
@@ -43,7 +44,14 @@ type ActionResult = { error: string } | undefined;
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const errorMessage = (e: unknown) =>
-  e instanceof Error ? e.message : String(e);
+  e instanceof z.ZodError
+    ? e.issues[0].message
+    : e instanceof Error
+      ? e.message
+      : String(e);
+
+/** The model the user picked. `generateStructured` then checks that it is one of LLM_MODELS. */
+const modelIdSchema = z.string("Pick a model.");
 
 export async function createCvAction() {
   const cv = await createCv(UNTITLED_CV);
@@ -91,6 +99,7 @@ export async function uploadPdfAction(
 export async function parseImportAction(
   importId: string,
   masked: unknown,
+  model: unknown,
 ): Promise<ActionResult> {
   const draft = await getImport(importId);
   if (!draft)
@@ -99,7 +108,11 @@ export async function parseImportAction(
 
   let cvId: string;
   try {
-    const { content, language } = await structureCv(draft.text, privateValues);
+    const { content, language, run } = await structureCv(
+      draft.text,
+      privateValues,
+      modelIdSchema.parse(model),
+    );
     const cv = await createCv(
       content.headline || draft.fileName.replace(/\.pdf$/i, ""),
       {
@@ -108,6 +121,7 @@ export async function parseImportAction(
         sourcePdf: draft.id,
         contact: contactFromValues(privateValues),
         vault: privateValues,
+        lastRun: run,
       },
     );
     await deleteImport(draft.id);
@@ -136,15 +150,20 @@ const jobTextSchema = z
 export async function analyzeAction(
   cvId: string,
   jobText: unknown,
-): Promise<{ report: Analysis } | { error: string }> {
+  model: unknown,
+): Promise<{ report: Analysis; run: Run } | { error: string }> {
   const parsed = jobTextSchema.safeParse(jobText);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const cv = await getCv(cvId);
   if (!cv) return { error: "This CV no longer exists." };
   try {
-    return {
-      report: await analyzeCv(cv.content, parsed.data, privateValuesOf(cv)),
-    };
+    const { analysis, run } = await analyzeCv(
+      cv.content,
+      parsed.data,
+      privateValuesOf(cv),
+      modelIdSchema.parse(model),
+    );
+    return { report: analysis, run };
   } catch (e) {
     return { error: errorMessage(e) };
   }
@@ -157,6 +176,7 @@ const tailorInputSchema = z.object({
   pages: z.union([z.literal(1), z.literal(2)]),
   report: analysisSchema,
   confirmed: z.array(z.string()),
+  model: modelIdSchema,
 });
 
 /**
@@ -169,7 +189,7 @@ export async function tailorAction(
 ): Promise<ActionResult> {
   const parsed = tailorInputSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { jobText, url, language, pages } = parsed.data;
+  const { jobText, url, language, pages, model } = parsed.data;
   // Input hygiene: confirmed names must be gaps of the report (both come from this user's own browser).
   const report = {
     ...parsed.data.report,
@@ -191,6 +211,7 @@ export async function tailorAction(
       jobText,
       { language, pages, report },
       privateValuesOf(cv),
+      model,
     );
     const variantLanguage = language || tailored.job.language;
     const variant = await createCv(tailored.job.title || cv.title, {
@@ -218,6 +239,7 @@ export async function tailorAction(
           knownSkills: report.confirmed,
         },
       ),
+      lastRun: tailored.run,
     });
     variantId = variant.id;
   } catch (e) {
@@ -233,13 +255,17 @@ const keepTerms = (cv: CvRecord) =>
 /** Reviews a CV against good CV practice. The suggestions are returned, not saved. */
 export async function reviewAction(
   cvId: string,
-): Promise<{ suggestions: Suggestion[]; model: string } | { error: string }> {
+  model: unknown,
+): Promise<{ suggestions: Suggestion[]; run: Run } | { error: string }> {
   const cv = await getCv(cvId);
   if (!cv) return { error: "This CV no longer exists." };
   try {
-    return await reviewCv(cv.content, privateValuesOf(cv), {
-      keep: keepTerms(cv),
-    });
+    return await reviewCv(
+      cv.content,
+      privateValuesOf(cv),
+      { keep: keepTerms(cv) },
+      modelIdSchema.parse(model),
+    );
   } catch (e) {
     return { error: errorMessage(e) };
   }
@@ -267,6 +293,7 @@ export type ReviseRequest = z.infer<typeof reviseRequestSchema>;
 export async function reviseAction(
   cvId: string,
   request: ReviseRequest,
+  model: unknown,
   masks: PrivateValue[] = [],
 ): Promise<ActionResult> {
   const parsed = reviseRequestSchema.safeParse(request);
@@ -287,11 +314,12 @@ export async function reviseAction(
   else instruction = req.instruction;
   try {
     const base = (await getBase(cv)) ?? cv; // the base was deleted: judge against this CV
-    const content = await reviseCv(
+    const { content, run } = await reviseCv(
       cv.content,
       instruction,
       [...privateValuesOf(cv), ...extra.data],
       { keep: keepTerms(cv) },
+      modelIdSchema.parse(model),
     );
     // The editor is locked during the call; still, never overwrite a save made meanwhile.
     if ((await getCv(cvId))?.updatedAt !== cv.updatedAt)
@@ -307,6 +335,7 @@ export async function reviseAction(
         // Facts and numbers the user typed come from them, not the model.
         stated: "instruction" in req ? req.instruction : "",
       }),
+      lastRun: run,
     });
   } catch (e) {
     return { error: errorMessage(e) };

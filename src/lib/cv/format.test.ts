@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { emphasis, joinFilled, range, visible } from "./format";
+import { emphasis, joinFilled, range, runCost, visible } from "./format";
 
 test("joinFilled and range skip blank parts", () => {
   expect(joinFilled(["Lead", " ", "Orbital Pay"])).toBe("Lead · Orbital Pay");
@@ -37,4 +37,13 @@ test("emphasis reads **bold** and *italic*, and leaves stray asterisks as text",
     { text: "Whole bullet", style: "bold" },
   ]);
   expect(emphasis("Plain")).toEqual([{ text: "Plain", style: null }]);
+});
+
+test("a run's cost: three decimals under a cent, tokens when the provider doesn't say", () => {
+  const run = { model: "m", tokens: 8400 };
+  expect(runCost({ ...run, costUsd: 0.0042 })).toBe("$0.004");
+  expect(runCost({ ...run, costUsd: 0.071 })).toBe("$0.07");
+  expect(runCost({ ...run, costUsd: 0.00004 })).toBe("under $0.001");
+  expect(runCost({ ...run, costUsd: null })).toBe("8.4k tokens");
+  expect(runCost({ ...run, costUsd: null, tokens: 640 })).toBe("640 tokens");
 });

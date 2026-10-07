@@ -64,8 +64,15 @@ classDiagram
     +content: CvContent
     +job: Job or null
     +changes: Changes
+    +lastRun: Run or null
     +createdAt: datetime
     +updatedAt: datetime
+  }
+  class Run {
+    <<schema>>
+    +model: string
+    +costUsd: number or null
+    +tokens: number
   }
   class Job {
     <<schema>>
@@ -172,6 +179,7 @@ classDiagram
   MatchReport --|> Analysis : extends
   Analysis "1" *-- "0..*" Requirement
   CvRecord "1" *-- "1" Changes
+  CvRecord "1" *-- "0..1" Run : lastRun
   Changes "1" *-- "0..*" Flag
   CvContent "1" *-- "0..*" Experience
   CvContent "1" *-- "0..*" Education
@@ -221,7 +229,14 @@ classDiagram
   <<component>> ImportDropZone
   class ImportReview {
     <<component>>
-    masks, what is sent, Parse
+    masks, what is sent, Model picker, Parse
+  }
+  class ModelChoice {
+    <<component>>
+    ModelsProvider: the LLM_MODELS list
+    +useModel() one shared choice, remembered in localStorage
+    ModelPicker: logo, select, cost tier
+    RunInfo: logo, model, cost or tokens
   }
   class DeleteCvButton
   <<component>> DeleteCvButton
@@ -229,7 +244,7 @@ classDiagram
     <<component>>
     +exportPdf()
     +revise(request, masks)
-    import banner
+    import and changes banners show lastRun
     right pane: panels kept in Activity once opened
     +track(panel, run) running in header, reopens on error
   }
@@ -339,15 +354,15 @@ classDiagram
 
   class StructureCv {
     <<module>>
-    +structureCv(text, privateValues)
+    +structureCv(text, privateValues, model) content, language, run
   }
   class AnalyzeCv {
     <<module>>
-    +analyzeCv(content, jobText, privateValues)
+    +analyzeCv(content, jobText, privateValues, model) analysis, run
   }
   class TailorCv {
     <<module>>
-    +tailorCv(content, jobText, options with report, privateValues)
+    +tailorCv(content, jobText, options with report, privateValues, model) content, job, run
   }
   class MatchScore {
     <<module>>
@@ -363,11 +378,11 @@ classDiagram
   }
   class ReviewCv {
     <<module>>
-    +reviewCv(content, privateValues, keep) suggestions, model name
+    +reviewCv(content, privateValues, keep, model) suggestions, run
   }
   class ReviseCv {
     <<module>>
-    +reviseCv(content, instruction, privateValues, keep)
+    +reviseCv(content, instruction, privateValues, keep, model) content, run
     +tightenInstruction(overflowLines, wordsPerLine)
     +applyInstruction(suggestions)
   }
@@ -379,11 +394,20 @@ classDiagram
   }
   class LlmGenerate {
     <<module>>
-    +generateStructured(schema, system, prompt, privateValues)
+    +generateStructured(schema, system, prompt, privateValues, model id) output, run
+    cost from the response, "pick another model" errors
   }
   class ProviderFactory {
     <<module>>
-    +getModel()
+    +getModel(id)
+    +refusalMessage(error, name)
+    openrouter: zero data retention on every request
+  }
+  class Models {
+    <<module>>
+    +parseModels(value, provider)
+    +modelsOrError() for pages
+    +findModel(id) only listed ids run
   }
   class LanguageModel
   <<interface>> LanguageModel
@@ -446,6 +470,7 @@ classDiagram
     +entryValues(entry)
     +cvText(content)
     +digits(s)
+    +runCost(run)
     SECTION_TITLES
   }
 
@@ -520,7 +545,6 @@ classDiagram
   AnalyzeCv --> LlmGenerate
   TailorCv --> LlmGenerate
   ReviewCv --> LlmGenerate
-  ReviewCv --> ProviderFactory : getModel, to name the model
   ReviseCv --> LlmGenerate
   StructureCv --> LlmContent
   TailorCv --> LlmContent
@@ -529,6 +553,17 @@ classDiagram
   LlmGenerate --> Redactor : mask before, restore after
   LlmGenerate --> OutboundGuard : every call
   LlmGenerate --> ProviderFactory
+  LlmGenerate --> Models : findModel, before every call
+  EditorPage --> Models : modelsOrError
+  ImportPage --> Models : modelsOrError
+  ImportReview --> ModelChoice
+  Editor --> ModelChoice : useModel, RunInfo
+  ReviewPanel --> ModelChoice
+  TailorPanel --> ModelChoice
+  Preview --> ModelChoice : picker beside Tighten
+  MatchReportView --> ModelChoice : RunInfo
+  ChangeControls --> ModelChoice : RunInfo
+  ModelChoice --> Format : runCost
   ProviderFactory ..> LanguageModel : creates
   AnthropicProvider ..|> LanguageModel
   OpenAICompatibleProvider ..|> LanguageModel
