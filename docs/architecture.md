@@ -230,6 +230,8 @@ classDiagram
     +exportPdf()
     +revise(request, masks)
     import banner
+    right pane: panels kept in Activity once opened
+    +track(panel, run) running in header, reopens on error
   }
   class TailorPanel {
     <<component>>
@@ -238,8 +240,8 @@ classDiagram
   }
   class ReviewPanel {
     <<component>>
-    review on open, suggestion checkboxes, Apply
-    Ask for something else, flagged names
+    review on first open, kept while closed
+    suggestion checkboxes, Apply, Ask for something else, flagged names
   }
   class MatchReportView {
     <<component>>

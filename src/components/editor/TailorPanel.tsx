@@ -24,11 +24,16 @@ export function TailorPanel({
   cvId,
   onClose,
   saveFirst,
+  track,
 }: {
   cvId: string;
   onClose: () => void;
   /** Saves pending edits, so the variant starts from what is on screen. */
   saveFirst: () => Promise<boolean>;
+  /** Runs a model call that may finish while the panel is closed: the header shows it running, and the panel reopens on an error. */
+  track: (
+    run: () => Promise<string | undefined>,
+  ) => Promise<string | undefined>;
 }) {
   const [jobText, setJobText] = useState("");
   const [url, setUrl] = useState("");
@@ -51,19 +56,27 @@ export function TailorPanel({
   const fetchJob = () =>
     startFetch(async () => {
       setError(undefined);
-      const result = await fetchJobAction(url);
-      if ("error" in result) setError(result.error);
-      else changeJobText(result.text);
+      setError(
+        await track(async () => {
+          const result = await fetchJobAction(url);
+          if ("error" in result) return result.error;
+          changeJobText(result.text);
+        }),
+      );
     });
 
   const analyze = () =>
     startAnalyze(async () => {
       setError(undefined);
-      if (!(await saveFirst())) return setError(SAVE_FAILED);
-      const result = await analyzeAction(cvId, jobText);
-      if ("error" in result) return setError(result.error);
-      setReport(result.report);
-      setConfirmed([]);
+      setError(
+        await track(async () => {
+          if (!(await saveFirst())) return SAVE_FAILED;
+          const result = await analyzeAction(cvId, jobText);
+          if ("error" in result) return result.error;
+          setReport(result.report);
+          setConfirmed([]);
+        }),
+      );
     });
 
   const toggle = (name: string) =>
@@ -76,16 +89,20 @@ export function TailorPanel({
   const tailor = (analysis: Analysis) =>
     startTailor(async () => {
       setError(undefined);
-      if (!(await saveFirst())) return setError(SAVE_FAILED);
-      const result = await tailorAction(cvId, {
-        jobText,
-        url,
-        language,
-        pages,
-        report: analysis,
-        confirmed,
-      });
-      if (result) setError(result.error);
+      setError(
+        await track(async () => {
+          if (!(await saveFirst())) return SAVE_FAILED;
+          const result = await tailorAction(cvId, {
+            jobText,
+            url,
+            language,
+            pages,
+            report: analysis,
+            confirmed,
+          });
+          return result?.error; // On success the variant opens.
+        }),
+      );
     });
 
   return (
@@ -101,7 +118,8 @@ export function TailorPanel({
           type="button"
           className="btn-link"
           onClick={onClose}
-          disabled={busy}
+          // An analysis keeps running while closed; tailoring ends by opening the new variant.
+          disabled={tailoring}
         >
           Close
         </button>

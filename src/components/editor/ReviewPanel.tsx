@@ -14,7 +14,7 @@ import { detectInText } from "@/lib/privacy/detect";
 import { SAVE_FAILED } from "./use-autosave";
 
 /**
- * Reviews the CV as soon as it opens, lists the suggestions as checkboxes (ticked), and applies the
+ * Reviews the CV as soon as it first opens, lists the suggestions as checkboxes (ticked), and applies the
  * ticked ones. "Ask for something else" sends the user's own instruction, masking any name in it
  * that looks personal.
  */
@@ -23,6 +23,7 @@ export function ReviewPanel({
   variant,
   onClose,
   saveFirst,
+  track,
   revise,
   revising,
 }: {
@@ -32,6 +33,10 @@ export function ReviewPanel({
   onClose: () => void;
   /** Saves pending edits, so the review reads what is on screen. */
   saveFirst: () => Promise<boolean>;
+  /** Runs a model call that may finish while the panel is closed: the header shows it running, and the panel reopens on an error. */
+  track: (
+    run: () => Promise<string | undefined>,
+  ) => Promise<string | undefined>;
   /** Applies an edit; the editor locks, then reloads with the changes highlighted. */
   revise: (request: ReviseRequest, masks?: PrivateValue[]) => void;
   revising: boolean;
@@ -50,16 +55,21 @@ export function ReviewPanel({
   const review = () =>
     startReview(async () => {
       setError(undefined);
-      if (!(await saveFirst())) return setError(SAVE_FAILED);
-      const snapshot = JSON.stringify(content);
-      const result = await reviewAction(cvId);
-      if ("error" in result) return setError(result.error);
-      setSuggestions(result.suggestions);
-      setReviewed(snapshot);
-      setUnticked([]);
+      setError(
+        await track(async () => {
+          if (!(await saveFirst())) return SAVE_FAILED;
+          const snapshot = JSON.stringify(content);
+          const result = await reviewAction(cvId);
+          if ("error" in result) return result.error;
+          setSuggestions(result.suggestions);
+          setReviewed(snapshot);
+          setUnticked([]);
+        }),
+      );
     });
 
-  // The review starts when the panel opens. The ref keeps React's dev double-mount from running it twice.
+  // The review starts when the panel first opens. The ref stops it running again when the panel is shown
+  // again (effects re-run when an Activity becomes visible) and on React's dev double-mount.
   const started = useRef(false);
   useEffect(() => {
     if (started.current) return;
@@ -102,7 +112,8 @@ export function ReviewPanel({
           type="button"
           className="btn-link"
           onClick={onClose}
-          disabled={busy}
+          // A review keeps running while closed; applying locks the page until it reloads.
+          disabled={revising}
         >
           Close
         </button>

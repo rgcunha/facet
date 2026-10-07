@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { Activity, useState, useTransition } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { joinFilled, range, SECTION_TITLES } from "@/lib/cv/format";
 import type { CvView, EditorValues, Job, PrivateValue } from "@/lib/cv/schema";
@@ -20,6 +20,8 @@ import { Preview } from "./Preview";
 import { ReviewPanel } from "./ReviewPanel";
 import { TailorPanel } from "./TailorPanel";
 import { SAVE_FAILED, type SaveStatus, useAutosave } from "./use-autosave";
+
+type Panel = "review" | "tailor";
 
 const statusText: Record<SaveStatus, string> = {
   saved: "Saved",
@@ -49,16 +51,24 @@ export function Editor({
 }) {
   const form = useForm<EditorValues>({ defaultValues });
   const [showImportBanner, setShowImportBanner] = useState(justImported);
-  const [panel, setPanel] = useState<"review" | "tailor" | null>(
+  const [panel, setPanel] = useState<Panel | null>(
     openTailor ? "tailor" : null,
   );
+  // A panel mounts on first open (Review starts a paid review then) and stays mounted, so checking the
+  // preview keeps its work, and a review still running.
+  const [opened, setOpened] = useState({ review: false, tailor: openTailor });
+  const [running, setRunning] = useState({ review: false, tailor: false });
   const [reviseError, setReviseError] = useState<string>();
   const [revising, startRevise] = useTransition();
   const { status, flush } = useAutosave(form, id);
   const baseScore = useBaseScore(base, job?.report ?? undefined);
 
   // Saved first, so the model edits what is on screen; the page then reloads with the result.
-  const revise = (request: ReviseRequest, masks?: PrivateValue[]) =>
+  const revise = (request: ReviseRequest, masks?: PrivateValue[]) => {
+    if (running.review || running.tailor)
+      return setReviseError(
+        "Wait for the Review or Tailor panel to finish first: changing the CV now would discard its result.",
+      );
     startRevise(async () => {
       setReviseError(undefined);
       const result = (await flush())
@@ -66,7 +76,26 @@ export function Editor({
         : { error: SAVE_FAILED };
       if (result) setReviseError(result.error);
     });
-  const panelButton = (name: "review" | "tailor", label: string) => (
+  };
+  const closePanel = () => setPanel(null);
+  const togglePanel = (name: Panel) => {
+    setPanel(panel === name ? null : name);
+    if (!opened[name]) setOpened({ ...opened, [name]: true });
+  };
+  // A panel can be closed while its call runs, so an error reopens it instead of staying hidden.
+  const track =
+    (name: Panel) => async (run: () => Promise<string | undefined>) => {
+      setRunning((r) => ({ ...r, [name]: true }));
+      try {
+        const error = await run();
+        if (error) setPanel(name);
+        return error;
+      } finally {
+        setRunning((r) => ({ ...r, [name]: false }));
+      }
+    };
+
+  const panelButton = (name: Panel, label: string) => (
     <button
       type="button"
       className={
@@ -76,9 +105,12 @@ export function Editor({
       }
       aria-pressed={panel === name}
       disabled={revising}
-      onClick={() => setPanel(panel === name ? null : name)}
+      onClick={() => togglePanel(name)}
     >
       {label}
+      {running[name] && panel !== name && (
+        <span className="text-muted"> · running</span>
+      )}
     </button>
   );
 
@@ -330,22 +362,30 @@ export function Editor({
           </fieldset>
         </form>
 
-        {panel === "tailor" ? (
-          <TailorPanel
-            cvId={id}
-            onClose={() => setPanel(null)}
-            saveFirst={flush}
-          />
-        ) : panel === "review" ? (
-          <ReviewPanel
-            cvId={id}
-            variant={!!job}
-            onClose={() => setPanel(null)}
-            saveFirst={flush}
-            revise={revise}
-            revising={revising}
-          />
-        ) : (
+        {opened.tailor && (
+          <Activity mode={panel === "tailor" ? "visible" : "hidden"}>
+            <TailorPanel
+              cvId={id}
+              onClose={closePanel}
+              saveFirst={flush}
+              track={track("tailor")}
+            />
+          </Activity>
+        )}
+        {opened.review && (
+          <Activity mode={panel === "review" ? "visible" : "hidden"}>
+            <ReviewPanel
+              cvId={id}
+              variant={!!job}
+              onClose={closePanel}
+              saveFirst={flush}
+              track={track("review")}
+              revise={revise}
+              revising={revising}
+            />
+          </Activity>
+        )}
+        <Activity mode={panel ? "hidden" : "visible"}>
           <Preview
             sourceUrl={sourceUrl}
             base={base}
@@ -362,7 +402,7 @@ export function Editor({
             onTighten={(overflowLines) => revise({ tighten: overflowLines })}
             tightening={revising}
           />
-        )}
+        </Activity>
       </main>
     </FormProvider>
   );
