@@ -38,7 +38,7 @@ Available once Phase 1 sets up the project:
 ## Vendor-agnostic LLM
 
 - The provider is chosen only through `.env`: `LLM_PROVIDER=anthropic|openrouter|openai-compatible`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`.
-- App code calls task functions in `lib/llm` (`structureCv`; Phase 3: `tailorCv`, `tightenCv`). Nothing provider-specific belongs outside `lib/llm/provider.ts`.
+- App code calls task functions in `lib/llm` (`structureCv`, `analyzeCv`, `tailorCv`, `reviewCv`, `reviseCv`). Nothing provider-specific belongs outside `lib/llm/provider.ts`.
 - Structured output uses AI SDK 7's `generateText` with `Output.object({ schema })` (`generateObject` is deprecated), with schemas derived from `lib/cv/schema.ts`. The default model is `claude-opus-5-5`; the Anthropic provider picks native structured output for models that reject forced tool use.
 
 ## Persistence
@@ -48,7 +48,7 @@ Available once Phase 1 sets up the project:
   - `sources/<id>.pdf`: the original imported PDF
 - Only `lib/store/*` touches the file system. Pages and components go through server actions.
 - Every read is validated with zod. Every file has a `v` version field. Writes are atomic (write a tmp file, then rename).
-- Variants are independent copies of their base; there is no syncing. Tailoring and "Tighten to fit" record previous values in `changes.original` so fields can be reverted.
+- Variants are independent copies of their base; there is no syncing. Tailoring, Review (Apply, Ask for something else) and "Tighten to fit" record previous values in `changes.original` so fields can be reverted.
 
 ## Code rules (keep it lean)
 

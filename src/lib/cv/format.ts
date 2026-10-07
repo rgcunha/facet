@@ -1,3 +1,5 @@
+import { type CvContent, LIST_SECTIONS, type ListSection } from "./schema";
+
 /** Trimmed, non-empty values only. Editors keep raw text (so an empty entry can be typed into); display filters here. */
 export const filled = (values: string[]) =>
   values.map((v) => v.trim()).filter(Boolean);
@@ -30,8 +32,10 @@ const isBlank = (entry: object) => entryValues(entry).length === 0;
 export const visible = <T extends object>(entries: T[]) =>
   entries.filter((entry) => !isBlank(entry));
 
-export const plural = (n: number, word: string) =>
-  `${n} ${word}${n === 1 ? "" : "s"}`;
+export const plural = (n: number, word: string, many = `${word}s`) =>
+  `${n} ${n === 1 ? word : many}`;
+
+export const digits = (s: string) => s.replace(/\D/g, "");
 
 /**
  * Inline emphasis in a list item: "**bold**" and "*italic*", the markdown people already type.
@@ -52,3 +56,21 @@ export function emphasis(text: string) {
     })
     .filter((part) => part.text);
 }
+
+/** Every text of a CV (ids excluded), for searching it as a whole. */
+export const cvText = (content: CvContent) =>
+  [
+    content.headline,
+    content.summary,
+    ...LIST_SECTIONS.flatMap((s) => content[s].flatMap(entryValues)),
+  ].join("\n");
+
+/** What the editor calls each list section; review headings use the same words. */
+export const SECTION_TITLES: Record<ListSection, string> = {
+  experience: "Experience",
+  education: "Education",
+  skills: "Skills",
+  projects: "Projects",
+  languages: "Languages",
+  extras: "Other sections",
+};

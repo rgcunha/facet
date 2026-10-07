@@ -1,10 +1,5 @@
-import { entryValues, filled, fold, visible } from "@/lib/cv/format";
-import {
-  type Analysis,
-  type CvContent,
-  type CvView,
-  LIST_SECTIONS,
-} from "@/lib/cv/schema";
+import { cvText, filled, fold, visible } from "@/lib/cv/format";
+import type { Analysis, CvContent, CvView } from "@/lib/cv/schema";
 import { parseDate } from "./dates";
 import { readabilityChecks } from "./parsability";
 
@@ -23,14 +18,7 @@ const words = (s: string) =>
     .replace(/[^\p{L}\p{N}+#]+/gu, " ")
     .trim()} `;
 
-const cvWords = (content: CvContent) =>
-  words(
-    [
-      content.headline,
-      content.summary,
-      ...LIST_SECTIONS.flatMap((s) => content[s].flatMap(entryValues)),
-    ].join(" "),
-  );
+const cvWords = (content: CvContent) => words(cvText(content));
 
 const mentions = (text: string, term: string) =>
   term.trim() !== "" && text.includes(words(term));

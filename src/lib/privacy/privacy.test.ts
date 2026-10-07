@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { PrivateValue } from "@/lib/cv/schema";
 import type { TextLine } from "@/lib/pdf/extract";
-import { detectPrivate } from "./detect";
+import { emptyContent } from "@/lib/cv/empty";
+import { detectInText, detectPrivate } from "./detect";
 import { assertNoPrivateData } from "./guard";
 import { redact, rehydrate, toMasks } from "./redact";
 
@@ -172,4 +173,71 @@ test("emphasis markers inside a multi-word value don't hide it from masking or t
   expect(masked).not.toMatch(/acme|corp/i);
   expect(() => assertNoPrivateData(masked, values)).not.toThrow();
   expect(() => assertNoPrivateData(text, values)).toThrow(/custom/);
+});
+
+describe("detectInText", () => {
+  const content = {
+    ...emptyContent(),
+    experience: [
+      {
+        id: "a",
+        role: "Lead Engineer",
+        company: "Orbital Pay",
+        location: "",
+        start: "",
+        end: "",
+        highlights: [],
+      },
+    ],
+  };
+
+  test("flags a person's name the CV doesn't contain, but not the CV's own employers", () => {
+    const found = detectInText(
+      "Make the Orbital Pay role read more senior. Mention Marta Silva’s risk team.",
+      content,
+    );
+    expect(found).toEqual([{ kind: "name", value: "Marta Silva" }]);
+  });
+
+  test("flags emails, links and phone numbers", () => {
+    const found = detectInText(
+      "Add my portfolio github.com/someone, write to ana@example.com or +351 912 000 000.",
+      content,
+    );
+    expect(kinds(found)).toEqual({
+      "ana@example.com": "email",
+      "github.com/someone": "url",
+      "+351 912 000 000": "phone",
+    });
+  });
+
+  test("a name opening the instruction or with inner capitals is caught whole", () => {
+    expect(
+      detectInText("Marta Silva reviewed my design doc.", content),
+    ).toEqual([{ kind: "name", value: "Marta Silva" }]);
+    expect(detectInText("Mentor: Marta Silva", content)).toEqual([
+      { kind: "name", value: "Marta Silva" },
+    ]);
+    expect(detectInText("Thank John O'Neil-Smith", content)).toEqual([
+      { kind: "name", value: "John O'Neil-Smith" },
+    ]);
+  });
+
+  test("a name is only excused by the same whole words in the CV", () => {
+    const cv = {
+      ...content,
+      projects: [
+        { id: "p", name: "Joana Silva Consulting", link: "", description: "" },
+      ],
+    };
+    expect(detectInText("Thank Ana Silva for the intro.", cv)).toEqual([
+      { kind: "name", value: "Ana Silva" },
+    ]);
+  });
+
+  test("plain instructions flag nothing", () => {
+    expect(
+      detectInText("Shorten the summary. Use present tense.", content),
+    ).toEqual([]);
+  });
 });

@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { FormProvider, useForm } from "react-hook-form";
-import { joinFilled, range } from "@/lib/cv/format";
-import type { CvView, EditorValues, Job } from "@/lib/cv/schema";
-import { tightenAction } from "@/app/actions";
+import { joinFilled, range, SECTION_TITLES } from "@/lib/cv/format";
+import type { CvView, EditorValues, Job, PrivateValue } from "@/lib/cv/schema";
+import { type ReviseRequest, reviseAction } from "@/app/actions";
 import { ChangesBanner, FabricationWarnings, FieldChange } from "./changes";
 import {
   Card,
@@ -17,8 +17,9 @@ import {
 } from "./fields";
 import { LiveScoreChange, MatchReport, useBaseScore } from "./MatchReport";
 import { Preview } from "./Preview";
+import { ReviewPanel } from "./ReviewPanel";
 import { TailorPanel } from "./TailorPanel";
-import { type SaveStatus, useAutosave } from "./use-autosave";
+import { SAVE_FAILED, type SaveStatus, useAutosave } from "./use-autosave";
 
 const statusText: Record<SaveStatus, string> = {
   saved: "Saved",
@@ -48,21 +49,38 @@ export function Editor({
 }) {
   const form = useForm<EditorValues>({ defaultValues });
   const [showImportBanner, setShowImportBanner] = useState(justImported);
-  const [tailorOpen, setTailorOpen] = useState(openTailor);
-  const [tightenError, setTightenError] = useState<string>();
-  const [tightening, startTighten] = useTransition();
+  const [panel, setPanel] = useState<"review" | "tailor" | null>(
+    openTailor ? "tailor" : null,
+  );
+  const [reviseError, setReviseError] = useState<string>();
+  const [revising, startRevise] = useTransition();
   const { status, flush } = useAutosave(form, id);
   const baseScore = useBaseScore(base, job?.report ?? undefined);
 
-  // Saved first, so the model shortens what is on screen; the page then reloads with the result.
-  const tighten = (overflowLines: number) =>
-    startTighten(async () => {
-      setTightenError(undefined);
+  // Saved first, so the model edits what is on screen; the page then reloads with the result.
+  const revise = (request: ReviseRequest, masks?: PrivateValue[]) =>
+    startRevise(async () => {
+      setReviseError(undefined);
       const result = (await flush())
-        ? await tightenAction(id, overflowLines)
-        : { error: "Couldn’t save your latest edits; try again." };
-      if (result) setTightenError(result.error);
+        ? await reviseAction(id, request, masks)
+        : { error: SAVE_FAILED };
+      if (result) setReviseError(result.error);
     });
+  const panelButton = (name: "review" | "tailor", label: string) => (
+    <button
+      type="button"
+      className={
+        panel === name
+          ? "btn-secondary bg-ink text-white hover:bg-ink hover:text-white"
+          : "btn-secondary"
+      }
+      aria-pressed={panel === name}
+      disabled={revising}
+      onClick={() => setPanel(panel === name ? null : name)}
+    >
+      {label}
+    </button>
+  );
 
   // Open the tab synchronously (popup blockers), then point it at the print view once the latest edits are saved.
   const exportPdf = async () => {
@@ -87,7 +105,7 @@ export function Editor({
               className="w-full bg-transparent py-1 text-lg font-bold"
               placeholder="CV name"
               {...form.register("title")}
-              disabled={tightening}
+              disabled={revising}
             />
           </label>
           {job?.report && (
@@ -107,25 +125,14 @@ export function Editor({
             <select
               className="input w-auto"
               {...form.register("pages", { valueAsNumber: true })}
-              disabled={tightening}
+              disabled={revising}
             >
               <option value={1}>1 page</option>
               <option value={2}>2 pages</option>
             </select>
           </label>
-          <button
-            type="button"
-            className={
-              tailorOpen
-                ? "btn-secondary bg-ink text-white hover:bg-ink hover:text-white"
-                : "btn-secondary"
-            }
-            aria-pressed={tailorOpen}
-            disabled={tightening}
-            onClick={() => setTailorOpen(!tailorOpen)}
-          >
-            Tailor…
-          </button>
+          {panelButton("review", "Review…")}
+          {panelButton("tailor", "Tailor to a job…")}
           <button type="button" className="btn-primary" onClick={exportPdf}>
             Export PDF
           </button>
@@ -140,7 +147,8 @@ export function Editor({
           >
             <span className="flex-[1_1_400px]">
               <strong>Parsed.</strong> Compare with your original on the right
-              and fix anything that landed in the wrong place.
+              and fix anything that landed in the wrong place. Then{" "}
+              <strong>Review</strong> it before you tailor it to jobs.
             </span>
             <button
               type="button"
@@ -156,12 +164,12 @@ export function Editor({
       <div className="mx-auto flex max-w-[1392px] flex-col gap-2.5 px-6 pt-4 empty:hidden">
         <ChangesBanner job={job} />
         <FabricationWarnings />
-        {tightenError && (
+        {reviseError && (
           <p
             role="alert"
             className="rounded-lg border border-danger bg-white px-4 py-3 text-sm text-danger"
           >
-            {tightenError}
+            {reviseError}
           </p>
         )}
       </div>
@@ -172,9 +180,9 @@ export function Editor({
           className="min-w-0 flex-[1_1_520px]"
           onSubmit={(e) => e.preventDefault()}
         >
-          {/* Locked while "Tighten to fit" runs: its result replaces the content, so edits made meanwhile would be lost. */}
+          {/* Locked while the model edits the CV: its result replaces the content, so edits made meanwhile would be lost. */}
           <fieldset
-            disabled={tightening}
+            disabled={revising}
             className="flex min-w-0 flex-col gap-3.5 disabled:opacity-60"
           >
             <Card title="Contact">
@@ -204,7 +212,7 @@ export function Editor({
 
             <ItemList
               section="experience"
-              title="Experience"
+              title={SECTION_TITLES.experience}
               addLabel="Add role"
               summary={(e) =>
                 joinFilled([e.role, e.company, range(e.start, e.end)])
@@ -231,7 +239,7 @@ export function Editor({
 
             <ItemList
               section="education"
-              title="Education"
+              title={SECTION_TITLES.education}
               addLabel="Add education"
               summary={(e) => joinFilled([e.degree, e.institution])}
             >
@@ -251,7 +259,7 @@ export function Editor({
 
             <ItemList
               section="skills"
-              title="Skills"
+              title={SECTION_TITLES.skills}
               addLabel="Add group"
               summary={(s) => s.group}
             >
@@ -268,7 +276,7 @@ export function Editor({
 
             <ItemList
               section="projects"
-              title="Projects"
+              title={SECTION_TITLES.projects}
               addLabel="Add project"
               summary={(x) => x.name}
             >
@@ -289,7 +297,7 @@ export function Editor({
 
             <ItemList
               section="languages"
-              title="Languages"
+              title={SECTION_TITLES.languages}
               addLabel="Add language"
               summary={(l) => joinFilled([l.name, l.level])}
             >
@@ -303,7 +311,7 @@ export function Editor({
 
             <ItemList
               section="extras"
-              title="Other sections"
+              title={SECTION_TITLES.extras}
               addLabel="Add section"
               summary={(x) => x.title}
             >
@@ -322,11 +330,20 @@ export function Editor({
           </fieldset>
         </form>
 
-        {tailorOpen ? (
+        {panel === "tailor" ? (
           <TailorPanel
             cvId={id}
-            onClose={() => setTailorOpen(false)}
+            onClose={() => setPanel(null)}
             saveFirst={flush}
+          />
+        ) : panel === "review" ? (
+          <ReviewPanel
+            cvId={id}
+            variant={!!job}
+            onClose={() => setPanel(null)}
+            saveFirst={flush}
+            revise={revise}
+            revising={revising}
           />
         ) : (
           <Preview
@@ -342,8 +359,8 @@ export function Editor({
               )
             }
             showSecond={justImported}
-            onTighten={tighten}
-            tightening={tightening}
+            onTighten={(overflowLines) => revise({ tighten: overflowLines })}
+            tightening={revising}
           />
         )}
       </main>

@@ -7,16 +7,26 @@ import { UNTITLED_CV } from "@/lib/cv/empty";
 import {
   type Analysis,
   analysisSchema,
+  type CvRecord,
   editorValuesSchema,
+  type PrivateValue,
   privateValueSchema,
+  type Suggestion,
+  suggestionSchema,
 } from "@/lib/cv/schema";
 import { NO_CHANGES, recordChanges } from "@/lib/cv/changes";
 import { TEMPLATE_INFO } from "@/lib/cv/templates";
 import { fetchJobText } from "@/lib/job/fetch";
+import { scoreCv } from "@/lib/match/score";
 import { analyzeCv } from "@/lib/llm/analyze";
 import { structureCv } from "@/lib/llm/structure";
 import { tailorCv } from "@/lib/llm/tailor";
-import { tightenCv } from "@/lib/llm/tighten";
+import { reviewCv } from "@/lib/llm/review";
+import {
+  applyInstruction,
+  reviseCv,
+  tightenInstruction,
+} from "@/lib/llm/revise";
 import { extractLines } from "@/lib/pdf/extract";
 import { detectPrivate } from "@/lib/privacy/detect";
 import { contactFromValues, privateValuesOf } from "@/lib/privacy/values";
@@ -216,38 +226,94 @@ export async function tailorAction(
   redirect(`/cv/${variantId}`);
 }
 
-/** Shortens a CV in place by about `overflowLines` lines; every edit can be reverted like a tailoring change. */
-export async function tightenAction(
+/** The job requirements a variant matches, so reviewing or editing it doesn't lose them. */
+const keepTerms = (cv: CvRecord) =>
+  cv.job?.report ? scoreCv(cv, cv.job.report).found : [];
+
+/** Reviews a CV against good CV practice. The suggestions are returned, not saved. */
+export async function reviewAction(
   cvId: string,
-  overflowLines: number,
-): Promise<ActionResult> {
+): Promise<{ suggestions: Suggestion[] } | { error: string }> {
   const cv = await getCv(cvId);
   if (!cv) return { error: "This CV no longer exists." };
   try {
-    const base = (await getBase(cv)) ?? cv; // the base was deleted: judge against this CV
-    // Aim a little over the overflow, so the result really fits.
-    const words = Math.ceil(
-      Math.max(1, overflowLines) *
-        TEMPLATE_INFO[cv.template].wordsPerLine *
-        1.2,
+    return {
+      suggestions: await reviewCv(cv.content, privateValuesOf(cv), {
+        keep: keepTerms(cv),
+      }),
+    };
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+}
+
+const reviseRequestSchema = z.union([
+  z.object({ tighten: z.number().int().nonnegative() }),
+  z.object({ suggestions: z.array(suggestionSchema).min(1) }),
+  z.object({
+    instruction: z
+      .string()
+      .trim()
+      .min(3, "Write what should change.")
+      .max(2000, "Keep the instruction under 2000 characters."),
+  }),
+]);
+
+export type ReviseRequest = z.infer<typeof reviseRequestSchema>;
+
+/**
+ * Edits a CV in place with the model: "Tighten to fit" (shorten by about `tighten` lines), the fixes
+ * ticked in a review, or the user's own instruction. `masks` are extra values to mask in this request
+ * (names found in the instruction); they aren't saved. Every edit can be reverted like a tailoring change.
+ */
+export async function reviseAction(
+  cvId: string,
+  request: ReviseRequest,
+  masks: PrivateValue[] = [],
+): Promise<ActionResult> {
+  const parsed = reviseRequestSchema.safeParse(request);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const extra = z.array(privateValueSchema).safeParse(masks);
+  if (!extra.success) return { error: "Invalid masks." };
+  const cv = await getCv(cvId);
+  if (!cv) return { error: "This CV no longer exists." };
+  const req = parsed.data;
+  let instruction: string;
+  if ("tighten" in req)
+    instruction = tightenInstruction(
+      req.tighten,
+      TEMPLATE_INFO[cv.template].wordsPerLine,
     );
-    const content = await tightenCv(cv.content, words, privateValuesOf(cv));
-    // The editor is locked while tightening; still, never overwrite a save made during the call.
+  else if ("suggestions" in req)
+    instruction = applyInstruction(req.suggestions);
+  else instruction = req.instruction;
+  try {
+    const base = (await getBase(cv)) ?? cv; // the base was deleted: judge against this CV
+    const content = await reviseCv(
+      cv.content,
+      instruction,
+      [...privateValuesOf(cv), ...extra.data],
+      { keep: keepTerms(cv) },
+    );
+    // The editor is locked during the call; still, never overwrite a save made meanwhile.
     if ((await getCv(cvId))?.updatedAt !== cv.updatedAt)
       return {
         error:
-          "The CV changed while it was being shortened. Nothing was overwritten; try again.",
+          "The CV changed while the model was editing it. Nothing was overwritten; try again.",
       };
     await updateCv(cvId, {
       content,
       changes: recordChanges(cv.changes, cv.content, content, base.content, {
         translated: cv.language !== base.language,
+        knownSkills: cv.job?.report?.confirmed,
+        // Facts and numbers the user typed come from them, not the model.
+        stated: "instruction" in req ? req.instruction : "",
       }),
     });
   } catch (e) {
     return { error: errorMessage(e) };
   }
-  refresh(); // the editor reloads with the shortened content (it remounts on a new updatedAt)
+  refresh(); // the editor reloads with the edited content (it remounts on a new updatedAt)
 }
 
 export async function fetchJobAction(

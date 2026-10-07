@@ -5,6 +5,7 @@ import { analyzeAction, fetchJobAction, tailorAction } from "@/app/actions";
 import { plural } from "@/lib/cv/format";
 import type { Analysis } from "@/lib/cv/schema";
 import { MatchReport } from "./MatchReport";
+import { SAVE_FAILED } from "./use-autosave";
 
 const LANGUAGES = [
   ["", "Same as the job"],
@@ -58,8 +59,7 @@ export function TailorPanel({
   const analyze = () =>
     startAnalyze(async () => {
       setError(undefined);
-      if (!(await saveFirst()))
-        return setError("Couldn’t save your latest edits; try again.");
+      if (!(await saveFirst())) return setError(SAVE_FAILED);
       const result = await analyzeAction(cvId, jobText);
       if ("error" in result) return setError(result.error);
       setReport(result.report);
@@ -76,8 +76,7 @@ export function TailorPanel({
   const tailor = (analysis: Analysis) =>
     startTailor(async () => {
       setError(undefined);
-      if (!(await saveFirst()))
-        return setError("Couldn’t save your latest edits; try again.");
+      if (!(await saveFirst())) return setError(SAVE_FAILED);
       const result = await tailorAction(cvId, {
         jobText,
         url,

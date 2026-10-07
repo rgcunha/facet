@@ -112,6 +112,32 @@ export const analysisSchema = z.object({
   suggestions: z.array(z.string()),
 });
 
+/**
+ * One finding of a review. Not stored: it lives in the Review panel until it's closed. No defaults,
+ * like `analysisSchema`: the model writes every field.
+ */
+export const suggestionSchema = z.object({
+  area: z
+    .enum(["headline", "summary", ...LIST_SECTIONS, "whole"])
+    .describe(
+      'The part of the CV it is about; "whole" for something across sections',
+    ),
+  entryId: z
+    .string()
+    .nullable()
+    .describe("The id of the entry it is about, or null for a whole section"),
+  problem: z.string().describe("What's wrong, quoting the words in question"),
+  detail: z.string().describe("One sentence on how to fix it"),
+  kind: z
+    .enum(["fix", "yours"])
+    .describe(
+      '"fix": can be fixed with what the CV already says. "yours": needs something only the candidate knows, such as a real number',
+    ),
+});
+export const reviewSchema = z.object({
+  suggestions: z.array(suggestionSchema),
+});
+
 /** The analysis a variant was tailored from, with the gaps the user confirmed. */
 const matchReportSchema = analysisSchema.extend({
   /** Tailoring may add these, and they aren't flagged as possible fabrications. */
@@ -157,7 +183,7 @@ export const cvRecordSchema = z.object({
   content: cvContentSchema,
   /** The job offer a variant was tailored to. */
   job: jobSchema.nullable().default(null),
-  /** What tailoring or "Tighten to fit" changed, until the user reverts or keeps each change. */
+  /** What tailoring, a review or "Tighten to fit" changed, until the user reverts or keeps each change. */
   changes: changesSchema.prefault({}),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -194,5 +220,6 @@ export type Job = z.infer<typeof jobSchema>;
 export type Changes = z.infer<typeof changesSchema>;
 export type Analysis = z.infer<typeof analysisSchema>;
 export type MatchReport = z.infer<typeof matchReportSchema>;
+export type Suggestion = z.infer<typeof suggestionSchema>;
 /** A CV as templates render it and the match score reads it. */
 export type CvView = Pick<EditorValues, "contact" | "content" | "template">;

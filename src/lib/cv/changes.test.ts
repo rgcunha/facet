@@ -171,6 +171,77 @@ describe("findFabrications", () => {
     );
     expect(next.flags.map((f) => f.key)).toEqual(["skills.s"]);
   });
+
+  test("flags a number the base CV doesn't have, in free text too", () => {
+    const reviewed = {
+      ...base,
+      summary: "Builds payment systems for 3 teams.",
+      experience: [
+        role("a", "Orbital Pay", ["Led a team, cutting latency by 40%"]),
+        role("b", "Lumen Health", ["Built APIs since 2020"]),
+      ],
+    };
+    expect(
+      findFabrications([base], reviewed, diffContent(base, reviewed)),
+    ).toEqual([
+      { key: "summary", facts: ["3 teams"] },
+      { key: "experience.a", facts: ["40%"] },
+    ]);
+  });
+
+  test("digits inside names like S3 or EC2 aren't numbers", () => {
+    const after = {
+      ...base,
+      experience: [role("a", "Orbital Pay", ["Moved files to S3 on EC2"])],
+    };
+    expect(findFabrications([base], after, diffContent(base, after))).toEqual(
+      [],
+    );
+  });
+
+  test("numbers and facts the user typed in their instruction aren't flagged", () => {
+    const after = {
+      ...base,
+      experience: [
+        role("a", "Orbital Pay", ["Cut deploy time from 40 to 5 minutes"]),
+      ],
+    };
+    expect(
+      findFabrications([base], after, diffContent(base, after), {
+        stated: "Add that I cut deploy time from 40 to 5 minutes",
+      }),
+    ).toEqual([]);
+  });
+
+  test("a new number in an entry already flagged by tailoring is added to its flag", () => {
+    const first = recordChanges(NO_CHANGES, base, tailored, base);
+    const reviewed = {
+      ...tailored,
+      experience: tailored.experience.map((e) =>
+        e.id === "x" ? { ...e, highlights: ["Invented, 40% faster"] } : e,
+      ),
+    };
+    const next = recordChanges(first, tailored, reviewed, base);
+    expect(next.flags.find((f) => f.key === "experience.x")?.facts).toEqual([
+      "Acme Corp",
+      "2015",
+      "40% faster",
+    ]);
+  });
+
+  test("a number already in the CV, however it's written, is not flagged", () => {
+    const before = {
+      ...base,
+      experience: [role("a", "Orbital Pay", ["Served 1,500 shops"])],
+    };
+    const after = {
+      ...base,
+      experience: [role("a", "Orbital Pay", ["Serves 1.500 shops"])],
+    };
+    expect(
+      findFabrications([before], after, diffContent(before, after)),
+    ).toEqual([]);
+  });
 });
 
 test("skills the user confirmed in the match report aren't flagged", () => {

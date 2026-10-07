@@ -87,3 +87,23 @@ export const EMPHASIS_RULE =
 /** Shared by every prompt that receives a CV. */
 export const PLACEHOLDER_RULE =
   "Personal details were replaced with placeholders such as {{NAME}} or {{URL_2}}. Keep a placeholder exactly as written where it belongs; never guess what it stands for.";
+
+/** What a good CV does, for reviewing and revising one. Read for the candidate's field. */
+export const CV_PRACTICE = `Good CV practice, read for the candidate's field (judge it from the headline and roles):
+- Each bullet shows impact, not a duty. Impact needn't be a number: scope and ownership, before → after, technical difficulty, who benefited, adoption by others, reliability or risk removed, and leadership all count. Use a number only when the CV already has it.
+- Bullets start with a strong verb. No filler or clichés ("passionate", "results-driven", "responsible for", "helped with", "various", "successfully").
+- Present tense for the current role, past tense for earlier ones. No "I" or "my".
+- One date format, punctuation style and spelling variant throughout.
+- The summary is 2–3 lines on level and focus, and doesn't repeat the headline.
+- Older roles get fewer bullets than recent ones. Vague bullets are made specific or dropped.
+- Skills are grouped, and the most important ones are backed by the experience.`;
+
+/** For prompts that may only change wording, never facts. */
+export const NO_NEW_FACTS_RULE =
+  "Never add anything the CV doesn't already contain: employers, job titles, dates, degrees, schools, certifications, skills, tools, numbers or achievements. Never change those facts, and never overstate them: taking part doesn't become leading, and a team's work doesn't become the candidate's alone.";
+
+/** On a variant: the job's requirements the CV matches, so a rewrite doesn't lose them. */
+export const keepTermsRule = (terms: string[]) =>
+  terms.length
+    ? `\nThe CV was tailored to a job. Keep these terms wherever they appear, and never suggest removing them: ${terms.join(", ")}.`
+    : "";

@@ -7,6 +7,8 @@ import { privateValuesOf } from "@/lib/privacy/values";
 import { modelContentSchema } from "./content";
 import { analyzeCv } from "./analyze";
 import { generateStructured } from "./generate";
+import { reviewCv } from "./review";
+import { applyInstruction, reviseCv } from "./revise";
 import { structureCv } from "./structure";
 import { tailorCv } from "./tailor";
 
@@ -270,4 +272,74 @@ test("tailoring tells the model which skills the user confirmed", async () => {
   const sent = JSON.stringify(model.doGenerateCalls);
   expect(sent).toContain("Skills the candidate confirmed having: Helm.");
   expect(sent).toContain("- Use Platform in the headline");
+});
+
+test("a review masks the CV's private values and passes on the job's keywords", async () => {
+  const model = recordingModel({
+    suggestions: [
+      {
+        area: "summary",
+        entryId: null,
+        problem: "Names {{NAME}} in the third person",
+        detail: "Drop the name.",
+        kind: "fix",
+      },
+    ],
+  });
+  const suggestions = await reviewCv(
+    { ...emptyContent(), summary: "Alex Moreno runs Kubernetes." },
+    privateValues,
+    { keep: ["Kubernetes"] },
+    model,
+  );
+  const sent = JSON.stringify(model.doGenerateCalls);
+  for (const { value } of privateValues) expect(sent).not.toContain(value);
+  expect(sent).toContain("Keep these terms wherever they appear");
+  expect(suggestions[0].problem).toBe("Names Alex Moreno in the third person");
+});
+
+test("revising masks names in the user's instruction as well as the CV, and keeps entry ids", async () => {
+  const content = {
+    ...emptyContent(),
+    summary: "Alex Moreno builds ledgers.",
+    projects: [{ id: "p1", name: "Ledger", link: "", description: "" }],
+  };
+  const model = recordingModel({
+    ...content,
+    summary: "Builds ledgers with {{NAME_2}}'s team.",
+  });
+  const colleague: PrivateValue = { kind: "name", value: "Marta Silva" };
+  const revised = await reviseCv(
+    content,
+    "Mention that I built ledgers with Marta Silva's team.",
+    [...privateValues, colleague],
+    {},
+    model,
+  );
+  const sent = JSON.stringify(model.doGenerateCalls);
+  for (const { value } of [...privateValues, colleague])
+    expect(sent).not.toContain(value);
+  expect(revised.summary).toBe("Builds ledgers with Marta Silva's team.");
+  expect(revised.projects[0].id).toBe("p1");
+});
+
+test("Apply sends only the fixes, never what only the user can add", () => {
+  const instruction = applyInstruction([
+    {
+      area: "experience",
+      entryId: "a",
+      problem: "Filler",
+      detail: "Cut it.",
+      kind: "fix",
+    },
+    {
+      area: "experience",
+      entryId: "a",
+      problem: "Add a number",
+      detail: "How much faster?",
+      kind: "yours",
+    },
+  ]);
+  expect(instruction).toContain('- experience entry "a": Filler. Cut it.');
+  expect(instruction).not.toContain("Add a number");
 });

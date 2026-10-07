@@ -1,4 +1,5 @@
-import type { PrivateValue } from "@/lib/cv/schema";
+import { cvText, digits, normalize } from "@/lib/cv/format";
+import type { CvContent, PrivateValue } from "@/lib/cv/schema";
 import type { TextLine } from "@/lib/pdf/extract";
 import { sameValue } from "./redact";
 
@@ -23,8 +24,6 @@ const NAME = /^\p{Lu}[\p{L}'’.-]*(?:\s+\p{L}[\p{L}'’.-]*){1,4}$/u;
 const HEADER_LINES = 12;
 /** Separators people put between contact details on one line. */
 const SEGMENT_SEPARATOR = /\s*[·|•]\s*|\s{3,}/;
-
-const digits = (s: string) => s.replace(/\D/g, "");
 
 const dateIn = (line?: TextLine) => line?.text.match(DATE)?.[0];
 
@@ -51,22 +50,11 @@ function findName(header: TextLine[]) {
   )?.text.trim();
 }
 
-/**
- * Finds personal details in CV text, locally and without any network call. It is deliberately
- * eager (a false positive costs the user one click to unmask) and the Import screen lets the user
- * mask anything it missed.
- */
-export function detectPrivate(lines: TextLine[]): PrivateValue[] {
-  const found: PrivateValue[] = [];
-  const add = (kind: PrivateValue["kind"], value: string | undefined) => {
-    const v = value?.trim().replace(/[.,;:)]+$/, "");
-    if (v && !found.some((f) => sameValue(f.value, v)))
-      found.push({ kind, value: v });
-  };
-  const text = lines.map((l) => l.text).join("\n");
-  const header = lines.slice(0, HEADER_LINES);
-
-  add("name", findName(header));
+/** Emails, links and phone numbers anywhere in `text`. */
+function addContactDetails(
+  text: string,
+  add: (kind: PrivateValue["kind"], value: string) => void,
+) {
   for (const m of text.matchAll(EMAIL)) add("email", m[0]);
   for (const m of text.matchAll(URL)) if (!m[0].includes("@")) add("url", m[0]);
   for (const m of text.matchAll(PHONE)) {
@@ -74,6 +62,31 @@ export function detectPrivate(lines: TextLine[]): PrivateValue[] {
     if (n >= 9 && n <= 15 && !DATE_RANGE.test(m[0].trim()) && !DATE.test(m[0]))
       add("phone", m[0]);
   }
+}
+
+/** Collects values once each, trimmed of trailing punctuation. */
+function collector() {
+  const found: PrivateValue[] = [];
+  const add = (kind: PrivateValue["kind"], value: string | undefined) => {
+    const v = value?.trim().replace(/[.,;:)]+$/, "");
+    if (v && !found.some((f) => sameValue(f.value, v)))
+      found.push({ kind, value: v });
+  };
+  return { found, add };
+}
+
+/**
+ * Finds personal details in CV text, locally and without any network call. It is deliberately
+ * eager (a false positive costs the user one click to unmask) and the Import screen lets the user
+ * mask anything it missed.
+ */
+export function detectPrivate(lines: TextLine[]): PrivateValue[] {
+  const { found, add } = collector();
+  const text = lines.map((l) => l.text).join("\n");
+  const header = lines.slice(0, HEADER_LINES);
+
+  add("name", findName(header));
+  addContactDetails(text, add);
   for (const [i, line] of header.entries()) {
     add("dob", birthDate(header, i));
     for (const segment of line.text.split(SEGMENT_SEPARATOR)) {
@@ -81,6 +94,40 @@ export function detectPrivate(lines: TextLine[]): PrivateValue[] {
       if ((STREET.test(s) && /\d/.test(s)) || POSTCODE_CITY.test(s))
         add("address", s);
     }
+  }
+  return found;
+}
+
+/**
+ * Two or three capitalised words in a row ("Marta Silva", "John O'Neil-Smith", "Kevin McDonald"). Each
+ * word has a lowercase letter, so acronyms ("AWS") don't count. "Ana de Sousa" isn't caught: the
+ * cost of few false alarms.
+ */
+const WORD = "\\p{Lu}(?=[\\p{L}'’-]*\\p{Ll})[\\p{L}'’-]+";
+const CAPITALISED_WORDS = new RegExp(`${WORD}(?:\\s+${WORD}){1,2}`, "gu");
+const SENTENCE_START = /(?:^|[.!?:\n]\s*)$/;
+/** Lower case, letters and digits only, padded with spaces: whole-word search is then `includes`. */
+const wholeWords = (s: string) =>
+  ` ${normalize(s.replace(/[^\p{L}\p{N}]+/gu, " "))} `;
+
+/**
+ * Personal details in an instruction the user typed for the model. Plain text has no layout to go
+ * by, so besides emails, links and phone numbers it flags capitalised word pairs that look like a
+ * person's name, unless the CV already contains them (employers, schools and products are expected).
+ * A sentence's first word is dropped from a run of three ("Mention Marta Silva" flags "Marta Silva"),
+ * but a run of two is kept whole, so a name opening the instruction is still caught.
+ */
+export function detectInText(text: string, content: CvContent): PrivateValue[] {
+  const { found, add } = collector();
+  addContactDetails(text, add);
+  const cv = wholeWords(cvText(content));
+  for (const m of text.matchAll(CAPITALISED_WORDS)) {
+    let words = m[0].split(/\s+/);
+    if (words.length === 3 && SENTENCE_START.test(text.slice(0, m.index)))
+      words = words.slice(1);
+    const name = words.join(" ").replace(/['’]s$/, ""); // "Marta Silva’s team"
+    // Whole words: "Ana Silva" isn't excused by "Joana Silva Consulting".
+    if (!cv.includes(wholeWords(name))) add("name", name);
   }
   return found;
 }

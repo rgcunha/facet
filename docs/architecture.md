@@ -92,6 +92,13 @@ classDiagram
     +synonyms: string[]
     +priority: must or nice
   }
+  class Suggestion {
+    <<schema>>
+    +area: headline, summary, a list section or whole
+    +entryId: string or null
+    +problem, detail: string
+    +kind: fix or yours
+  }
   class Changes {
     <<schema>>
     +original: key to previous value
@@ -183,12 +190,13 @@ classDiagram
 - **An `ImportDraft`** exists between upload and "Parse CV". It holds the extracted text, which still contains personal data, so it never leaves the machine. Parsing creates a `CvRecord` whose `sourcePdf` keeps the draft's PDF (`data/sources/<id>.pdf`) for the "Original PDF" tab, then deletes the draft.
 - **`EditorValues`** is what the editor form edits (title, pages, contact, content, changes) and autosaves into the CV file.
 - **A variant** (`kind: variant`, `baseId`) is an independent copy of the CV it was tailored from (contact and vault included), plus the `Job` it targets. Editing the base later doesn't change it.
-- **`Changes`** records what tailoring or "Tighten to fit" changed, until the user reverts or keeps each change. `original` maps a key to what was there before:
+- **`Suggestion`** is one finding of a review. It isn't stored: the Review panel holds the list until it's closed. `fix` can be fixed from what the CV already says; `yours` needs something only the user knows (a real number), so it's shown without a checkbox and never sent to Apply.
+- **`Changes`** records what tailoring, a review or "Tighten to fit" changed, until the user reverts or keeps each change. `original` maps a key to what was there before:
   - `headline` / `summary`
   - `<section>.<entryId>`: an entry that was changed, added (`null`) or removed
   - `<section>.order`: the previous order of the entries
   - Entries are tracked by their ids, which the model must keep, so changes survive reordering.
-  - `flags` are possible fabrications, each pointing at one of those keys.
+  - `flags` are possible fabrications, each pointing at one of those keys: new facts in an entry, or new numbers anywhere the model rewrote (summary, highlights, descriptions).
 - **Defaults live in the schema** (zod `.default()`). Empty CVs and blank entries are derived from it, and older files that lack a newer field (e.g. `sourcePdf`) read back with its default.
 
 ## 2. Components
@@ -220,13 +228,18 @@ classDiagram
   class Editor {
     <<component>>
     +exportPdf()
-    +tighten(overflowLines)
+    +revise(request, masks)
     import banner
   }
   class TailorPanel {
     <<component>>
     job text, fetch, language, length
     Analyze, confirm gaps, Create variant
+  }
+  class ReviewPanel {
+    <<component>>
+    review on open, suggestion checkboxes, Apply
+    Ask for something else, flagged names
   }
   class MatchReportView {
     <<component>>
@@ -276,7 +289,8 @@ classDiagram
     +cancelImportAction(importId)
     +analyzeAction(cvId, jobText)
     +tailorAction(cvId, job, report, confirmed)
-    +tightenAction(cvId, overflowLines)
+    +reviewAction(cvId)
+    +reviseAction(cvId, tighten or suggestions or instruction, masks)
     +fetchJobAction(url)
   }
   class Changes {
@@ -301,6 +315,7 @@ classDiagram
   class PiiDetector {
     <<module>>
     +detectPrivate(lines)
+    +detectInText(text, content)
   }
   class Redactor {
     <<module>>
@@ -344,14 +359,21 @@ classDiagram
     <<module>>
     +parseDate(text)
   }
-  class TightenCv {
+  class ReviewCv {
     <<module>>
-    +tightenCv(content, words, privateValues)
+    +reviewCv(content, privateValues, keep)
+  }
+  class ReviseCv {
+    <<module>>
+    +reviseCv(content, instruction, privateValues, keep)
+    +tightenInstruction(overflowLines, wordsPerLine)
+    +applyInstruction(suggestions)
   }
   class LlmContent {
     <<module>>
     +modelContentSchema(ids)
     +withIds(parsed, known)
+    CV_PRACTICE, NO_NEW_FACTS_RULE, keepTermsRule
   }
   class LlmGenerate {
     <<module>>
@@ -420,6 +442,9 @@ classDiagram
     +normalize(s)
     +emphasis(text)
     +entryValues(entry)
+    +cvText(content)
+    +digits(s)
+    SECTION_TITLES
   }
 
   LibraryPage --> CvStore : listCvs
@@ -445,7 +470,13 @@ classDiagram
   Editor --> Preview
   Editor --> TailorPanel
   Editor --> ChangeControls
-  Editor --> ServerActions : tightenAction
+  Editor --> ReviewPanel
+  Editor --> ServerActions : reviseAction
+  ReviewPanel --> ServerActions : reviewAction
+  ReviewPanel --> PiiDetector : detectInText, in the browser
+  ReviewPanel --> Format : SECTION_TITLES
+  PiiDetector --> Format : cvText
+  Changes --> Format : cvText, digits
   Fields --> ChangeControls : entry and section notes
   ChangeControls --> Changes : revert, keep
   Fields --> Changes : changeKind
@@ -474,7 +505,9 @@ classDiagram
   ServerActions --> StructureCv
   ServerActions --> AnalyzeCv
   ServerActions --> TailorCv
-  ServerActions --> TightenCv
+  ServerActions --> ReviewCv
+  ServerActions --> ReviseCv
+  ServerActions --> MatchScore : a variant's terms to keep
   ServerActions --> JobFetcher
   ServerActions --> Changes : recordChanges
   ServerActions --> CvStore
@@ -484,10 +517,12 @@ classDiagram
   StructureCv --> LlmGenerate
   AnalyzeCv --> LlmGenerate
   TailorCv --> LlmGenerate
-  TightenCv --> LlmGenerate
+  ReviewCv --> LlmGenerate
+  ReviseCv --> LlmGenerate
   StructureCv --> LlmContent
   TailorCv --> LlmContent
-  TightenCv --> LlmContent
+  ReviewCv --> LlmContent
+  ReviseCv --> LlmContent
   LlmGenerate --> Redactor : mask before, restore after
   LlmGenerate --> OutboundGuard : every call
   LlmGenerate --> ProviderFactory
@@ -521,11 +556,15 @@ classDiagram
   - `recordChanges` records every change (`diffContent`) and flags new facts (employers, roles, dates, degrees, skills) that appear neither in the base CV nor in what the user had before this round, so anything they kept stays kept (`findFabrications`). That check is done locally, not by the model.
   - When the variant is in another language than its base, only language-neutral facts are checked: employers, schools, dates, links and skills. The import step detects each CV's language for this.
   - Revert and Keep (`revertChange`, `keepChange`) update the changes and their flags together.
-- **"Tighten to fit"** shortens a CV in place the same way. The editor is locked while it runs, and the action only writes if the CV wasn't saved in the meantime, so no edit is lost. Its changes are merged with earlier ones (the earliest version wins), so Revert always goes back to what you had.
+- **Review, Apply, Ask for something else and "Tighten to fit" edit a CV in place**, all through `reviseAction` → `reviseCv` with a different instruction: the ticked suggestions (`applyInstruction`), the user's own text, or "remove about N words" (`tightenInstruction`).
+  - `reviewAction` runs when the Review panel opens and returns `Suggestion`s, judged against one checklist of good CV practice (`CV_PRACTICE`, shared with `reviseCv`) read for the candidate's field. Impact without a number counts; numbers are never invented.
+  - On a variant, both get the job requirements the CV matches (`scoreCv(...).found`) as terms to keep, so a fix doesn't lower the match.
+  - The user's instruction is scanned in the browser (`detectInText`): emails, links, phones, and capitalised word pairs that look like a person's name and aren't in the CV. Those are masked by default ("Send as written" unmasks one) and passed as extra private values for that request only; they aren't saved.
+  - The editor is locked while the model edits, and the action only writes if the CV wasn't saved in the meantime, so no edit is lost. Changes are merged with earlier ones (the earliest version wins), so Revert always goes back to what you had, and `findFabrications` flags new facts and numbers.
 - **Job pages are fetched best-effort** (`JobFetcher`: Readability + linkedom). Pasting the text is the main way in.
 - **Pages read data on the server** via the stores; **every write goes through `ServerActions`**, which validate their input with zod. Client components never touch the file system.
 - **Only `lib/store/*` uses `node:fs`.** Every file (JSON and PDF) is written atomically through `FileStore.writeFileAtomic`, and JSON is validated on every read. Ids from URLs are checked with `isSafeId`, so a URL can't reach outside `DATA_DIR`.
 - **Personal data:**
   - **Read or written by:** `CvStore` (contact + vault, per CV), `ImportStore` (draft text), `SourceStore` (original PDFs) and the import actions.
   - **Shown by:** the templates, the editor's Contact card and `ImportReview`.
-  - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and analysis, tailoring and tightening (that CV's contact and vault).
+  - **Sent to the model:** only masked text, via `LlmGenerate`: import (the values the user kept masked), and analysis, tailoring, review and revising (that CV's contact and vault, plus any names masked in the user's instruction).

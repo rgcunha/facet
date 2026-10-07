@@ -20,7 +20,7 @@
   - Real model calls run through OpenRouter (`deepseek/deepseek-v4.1-flash`).
 - **Phase 4 (match report):** done (2026-10-06). `/simplify` and `/code-review` applied; the 3 review findings were a stale report after editing the job text mid-analysis, "Atualmente"/"Actualidad" not read as present, and year-first dates ("2019-03") losing their month. `bun test` passes 48 tests; analyze → confirm → tailor ran end to end against the real model with a made-up CV. The "single-column template" readability check moves to Phase 5.
 - **Phase 5 (templates):** done (2026-10-06). `/simplify` and `/code-review` applied; the one review finding was a stray " | " in Sidebar for a role without a company. All three templates and the picker were checked in headless Firefox screenshots; `bun test` passes 48 tests.
-- **Phase 6 (review):** planned (2026-10-07). Mockups: v4 row, approved.
+- **Phase 6 (review):** done (2026-10-07). `/simplify` and `/code-review` applied; the 9 review findings included two privacy leaks in instruction scanning (a name opening the instruction, names with inner capitals), a name excused by a longer one in the CV, new numbers lost on an already-flagged entry, the user's own numbers flagged, applying a review of an older version of the CV, and digits in names like S3. `bun test` passes 63 tests; review → apply → own instruction ran against the real model with a made-up CV, and in headless Firefox on a base CV and a variant.
 
 ## Context
 
@@ -488,7 +488,7 @@ Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each bu
 - `src/templates/Modern.tsx`: one column, sans-serif, centered header in an accent color, skills right after the summary, role first then company, location and dates.
 - "Tighten to fit" uses each template's words per line. The ATS readability check fails "single column" for Sidebar.
 
-**Phase 6: Review a CV and apply the fixes you agree with.** Planned (2026-10-07). Mockups: v4 "Review panel on a base CV", "After Apply: changes, warning, Tighten" and "Review panel on a variant".
+**Phase 6: Review a CV and apply the fixes you agree with.** ✅ Done (2026-10-07). Mockups: v4 "Review panel on a base CV", "After Apply: changes, warning, Tighten" and "Review panel on a variant".
 
 - **Why:** a correctly imported CV isn't necessarily a good one, and "Tighten to fit" was the only way to ask the model to change a CV. Review checks it against CV best practices and lets you choose which fixes to apply.
 - **Flow:** **Review…** → the panel opens and the review runs → suggestions are checkboxes, ticked by default → untick what you disagree with → **Apply N fixes** → the CV updates with tracked changes (Was / Revert / Keep, Revert all / Keep all) → Keep or Revert. **Ask for something else** (collapsed) sends your own instruction the same way. **Tighten to fit** stays where it is, in the preview toolbar.
@@ -505,7 +505,7 @@ Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each bu
   - Summary: 2–3 lines on level and focus, not repeating the headline.
   - Fewer bullets for older roles; vague bullets named or dropped; skills grouped, and each listed skill backed by the experience where possible.
 - **Numbers are never invented.** A suggestion that needs something only you know (a real metric) has `kind: "yours"`: it appears in the list without a checkbox and is never sent to Apply. `reviseCv` may not add a number that isn't already in the CV, and the local check below catches it if it does.
-- **Schema** (`schema.ts`): `suggestionSchema`: `{ id, section, entryId | null, problem, detail, kind: fix | yours }`. Suggestions are **not stored**: they live in the panel until it's closed; "Review again" runs a new review.
+- **Schema** (`schema.ts`): `suggestionSchema`: `{ area, entryId | null, problem, detail, kind: fix | yours }`, where `area` is headline, summary, a list section or whole. The panel labels each group itself from the entry id ("Orbital Pay"), so headings always match the form. Suggestions are **not stored**: they live in the panel until it's closed; "Review again" runs a new review.
 - **AI** (both through `generateStructured`, masked with the CV's private values):
   - `lib/llm/review.ts`: `reviewCv(content, privateValues, { report })` returns `suggestions[]`. On a variant it receives the job's match report, so it never suggests removing a requirement the CV matches.
   - `lib/llm/revise.ts`: `reviseCv(content, instruction, privateValues, { keep })` returns the complete `CvContent`, like `tightenCv` today. It **replaces `tighten.ts`**: Tighten to fit, Apply (an instruction built from the ticked suggestions) and Ask for something else (your text) are the same call with different instructions. `keep` lists the job requirements a variant matches; the prompt keeps those terms. The rules from `tightenCv` stay: never add facts, keep ids, placeholders, language and emphasis.

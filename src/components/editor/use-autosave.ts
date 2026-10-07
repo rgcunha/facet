@@ -63,3 +63,6 @@ export function useAutosave(form: UseFormReturn<EditorValues>, id: string) {
 
   return { status, flush };
 }
+
+/** Shown when an action that saves first (tailor, review, revise) couldn't save. */
+export const SAVE_FAILED = "Couldn’t save your latest edits; try again.";

@@ -1,10 +1,9 @@
-import { normalize } from "@/lib/cv/format";
+import { digits, normalize } from "@/lib/cv/format";
 import type { PrivateValue } from "@/lib/cv/schema";
 
 /** Joins digit groups ("+351 912-000 000" → "351912000000") so reformatted numbers still match. */
 const joinDigitGroups = (s: string) =>
   s.replace(/(?<=\d)[\s().\/-]+(?=\d)/g, "");
-const digits = (s: string) => s.replace(/\D/g, "");
 
 /** Last check before anything leaves the machine: throws if any private value appears in the payload. */
 export function assertNoPrivateData(

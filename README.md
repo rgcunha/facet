@@ -27,9 +27,17 @@ Importing needs a language model, configured in `.env` (see `.env.example`):
 
 Scanned PDFs (images without a text layer) can't be imported yet.
 
+## Review a CV
+
+After importing, click **Review…**. The model checks your CV against good CV practice for your field (impact rather than duties, strong verbs, no filler, consistent tense and dates, a short summary) and lists what to improve. Untick anything you disagree with, then **Apply**. The changes are highlighted, and each can be reverted or kept, as with tailoring.
+
+- Suggestions that need something only you know, such as a real number, have no checkbox: edit those yourself. The model never adds numbers, and if one appears that wasn't in your CV you get a warning.
+- **Ask for something else** sends your own instruction ("make the latest role read more senior"). Names, emails, links and phone numbers in it are found on your computer and masked unless you choose **Send as written**.
+- Review your base CV before tailoring: variants are copies and don't pick up later changes. On a variant, the review keeps the keywords the job asks for.
+
 ## Tailor a CV to a job
 
-On a CV, click **Tailor…** and paste the job description; **Fetch** can load it from a link on sites that allow it. Choose the output language and length, then **Create tailored variant**. Your CV (without your contact details, and with every masked value replaced) and the job text are sent to the language model.
+On a CV, click **Tailor to a job…** and paste the job description; **Fetch** can load it from a link on sites that allow it. Choose the output language and length, then **Create tailored variant**. Your CV (without your contact details, and with every masked value replaced) and the job text are sent to the language model.
 
 The variant opens in the editor, and everything the model changed is highlighted:
 

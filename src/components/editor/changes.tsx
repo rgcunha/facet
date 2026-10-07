@@ -13,7 +13,7 @@ import {
 import { entryValues, joinFilled, plural } from "@/lib/cv/format";
 import type { EditorValues, Job, ListSection } from "@/lib/cv/schema";
 
-/** Tracked changes (from tailoring or "Tighten to fit") and the actions on them; autosave persists both. */
+/** Tracked changes (from tailoring, a review or "Tighten to fit") and the actions on them; autosave persists both. */
 export function useChanges() {
   const { getValues, setValue } = useFormContext<EditorValues>();
   const changes = useWatch<EditorValues, "changes">({ name: "changes" });
@@ -95,8 +95,8 @@ export function ChangesBanner({ job }: { job: Job | null }) {
       <span className="flex-[1_1_360px]">
         <strong>
           {job
-            ? `Tailored for ${joinFilled([job.title, job.company])}`
-            : "Shortened to fit"}
+            ? `Variant for ${joinFilled([job.title, job.company])}`
+            : "Edited by the model"}
           :
         </strong>{" "}
         {plural(count, "change")}, highlighted below. Edit anything, or revert
@@ -180,13 +180,7 @@ export function EntryChange({
   if (!(key in original)) return null;
   const previous = original[key];
   if (previous === null)
-    return (
-      <ChangeRow
-        changeKey={key}
-        label="Added by tailoring"
-        revertLabel="Remove"
-      />
-    );
+    return <ChangeRow changeKey={key} label="Added" revertLabel="Remove" />;
   return (
     <ChangeRow changeKey={key} label="Changed">
       <details className="min-w-0">
