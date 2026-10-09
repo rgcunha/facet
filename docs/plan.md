@@ -2,7 +2,7 @@
 
 > **Superseded in one respect:** contact details and the PII vault are now stored per CV (`contact` and `vault` in `cvs/<id>.json`), not in a shared `profile.json`. Where this plan says `Profile` or `profile.json`, see `docs/architecture.md` for the current design.
 
-## Current status (2026-10-08)
+## Current status (2026-10-09)
 
 - **Phase 1:** done and committed.
 - **Phase 2 (import):** done.
@@ -22,6 +22,7 @@
 - **Phase 5 (templates):** done (2026-10-06). `/simplify` and `/code-review` applied; the one review finding was a stray " | " in Sidebar for a role without a company. All three templates and the picker were checked in headless Firefox screenshots; `bun test` passes 48 tests.
 - **Phase 6 (review):** done (2026-10-07). `/simplify` and `/code-review` applied; the 9 review findings included two privacy leaks in instruction scanning (a name opening the instruction, names with inner capitals), a name excused by a longer one in the CV, new numbers lost on an already-flagged entry, the user's own numbers flagged, applying a review of an older version of the CV, and digits in names like S3. `bun test` passes 63 tests; review → apply → own instruction ran against the real model with a made-up CV, and in headless Firefox on a base CV and a variant.
 - **Phase 7 (choose the model, see the cost):** done (2026-10-08). The OpenRouter check confirmed that `usage.cost` comes back by default and that `provider: { zdr: true }` is enforced (a model without zero-retention endpoints is refused with a 404). `/simplify` and `/code-review` applied; the review findings were: a broken `LLM_MODELS` blocked the editor even for manual editing, the README still described `LLM_MODEL`, model ids from the browser weren't validated with zod, and the banner credited every change to the last run. `bun test` passes 71 tests and `bun run e2e` 6; every picker and result was checked in Playwright screenshots against the mock model. Mockups: the v5 row.
+- **Phase 8 (a review you control):** planned (2026-10-09). Mockups: the v6 row.
 
 ## Context
 
@@ -554,6 +555,27 @@ Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each bu
   - E2e (mock provider with two models and a `usage.cost` in its answers): picking the second model sends its id (the mock records it) and the result shows its name and cost; the choice shows in every picker and survives a reload; a failing model shows the "couldn't produce a valid answer" message and changes nothing; Tighten uses its own picker.
 - **Diagrams:** add `Models` (`listModels`, `defaultModel`), `Run`, the `openrouter` provider and `lastRun`; `generateStructured` returns a run.
 - **`CLAUDE.md` and `.env.example`:** `LLM_MODELS` replaces `LLM_MODEL`; the default model is the first entry; providers are `anthropic | openrouter | openai-compatible`.
+
+**Phase 8: A review you control.** Mockups: v6 "Review start", "Results" and "After Apply".
+
+- **Why:** from using the tool. The review ran before you could pick a model; you couldn't see which CV standards it applied, or change them; it wasn't clear which suggestions you had to act on yourself; and once you did, those suggestions were gone (Apply reloads the editor).
+- **Flow:** **Review…** opens a start screen: the checklist ("What the review checks"), the Model picker and **Review**. Nothing runs until you click it. Results: **Can be fixed for you** (checkboxes, Apply) and **Needs your input** (Go to field). **Review again** reruns from the results with the picker beside it; "your checklist" goes back to the start screen. After Apply, the to-dos stay as notes on their entries until you click **Done**.
+- **Checklist** (the rules behind Review, Apply, Ask and Tighten; it replaces the fixed `CV_PRACTICE` text):
+  - Shown on the start screen as a numbered list, each rule with a short name ("Impact", "Strong verbs", "Tense"…). **Edit** turns it into one text box per rule, with remove, **+ Add a rule** and **Reset to default**.
+  - Saved once for the tool in `data/checklist.json`, not per CV: standards are about you. The default (today's seven rules, with names) lives in `lib/cv/checklist.ts`; the store returns it while no file exists.
+  - Always on and not editable: the safety rules (`NO_NEW_FACTS_RULE`, placeholders, ids, keep terms on a variant). Shown under the list as "Always on: the model never adds … your CV doesn't have."
+  - Rules are sent to the model as written, inside the prompt the guard checks, so a rule containing one of the CV's private values is blocked like any other request. The edit view says rules are sent to the model.
+- **Rule tags:** each suggestion names the rule it comes from. `suggestionSchema` gets `rule`: the model picks one of the checklist's rule names (the output schema's enum is built from the current list for each call). Results stay grouped by place; the tag is a small label on each row.
+- **Two sections:** `kind: "fix"` under **Can be fixed for you**, `kind: "yours"` under **Needs your input**, each with where it is ("Orbital Pay"), the rule tag and **Go to field**, which scrolls to the entry in the form and focuses its first field.
+- **To-dos saved with the CV:** `CvRecord.todos: { area, entryId, rule, problem, detail }[]`, replaced by the "yours" suggestions each time a review finishes. Shown as a dashed note at the end of their entry (or under the headline, summary or section) with **Done**, which removes it. Saving to-dos doesn't stamp `updatedAt` (they aren't content), so the editor doesn't reload and the review results stay on screen. To-dos for an entry that no longer exists aren't shown. A variant starts with none. The changes banner adds "N things need your input, marked in the form."
+- **Ask for something else:** on the start screen too, so a one-off change or a fact only you know needs no review first. New hint: "Add something only you know, or ask for a one-off change", e.g. "Payouts got 40% faster after the ledger redesign." It still uses the panel's model, the instruction scan and masking, and tracked changes.
+- **Actions:** `getChecklistAction()`, `saveChecklistAction(rules)` (zod: 1–15 rules, name and text trimmed and non-empty, text under 500 characters); `reviewAction` and `reviseAction` read the saved checklist; `reviewAction` saves the to-dos; `doneTodoAction(cvId, index)`.
+- **Out of scope:** a checklist per CV or per field, sharing checklists, grouping or filtering results by rule, to-dos from anywhere but a review, a history of reviews.
+- **Tests:**
+  - Unit: the checklist store (default when no file, save and read back, validation); the review prompt contains the edited rules and still the always-on rules; the rule enum follows the list; saving to-dos keeps `updatedAt`; the privacy test with an edited checklist.
+  - E2e: opening Review runs nothing until **Review** (the mock records no call); an edited rule is in the request the mock receives; a "yours" suggestion becomes a note that survives Apply and a reload, and **Done** removes it; Ask works from the start screen. The existing review tests click **Review** first.
+- **Diagrams:** add `Checklist` (schema and store), `Todo` on `CvRecord`, `rule` on `Suggestion`; `ReviewPanel` gets the start screen and the two sections.
+- **`CLAUDE.md`:** the review checklist is user-editable and stored in `data/checklist.json`; the safety rules stay in code.
 
 **Every phase ends with the Definition of done in `CLAUDE.md`:** `bun run check` + `bun test` pass → `/simplify` → `/code-review` → diagrams up to date → UI tried in the browser.
 
