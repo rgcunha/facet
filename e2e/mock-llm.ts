@@ -1,7 +1,8 @@
 /**
  * An OpenAI-compatible stand-in for the model provider, so e2e tests make no paid calls. It records
  * every request (tests check them for personal data and the model asked for) and answers a review
- * with fixed suggestions, reporting a cost per model like OpenRouter does.
+ * with fixed suggestions; any other request (Apply, Ask, Tighten) gets the CV it was sent, unchanged.
+ * It reports a cost per model like OpenRouter does.
  * GET /calls lists the recorded requests. POST /reset clears them and sets how the next calls end:
  * `failing` (an API error) or `invalid` (an answer that doesn't fit the schema).
  */
@@ -16,6 +17,7 @@ const SUGGESTIONS = {
       entryId: null,
       problem: "“I am a engineer” has a grammar error",
       detail: "Write “Backend engineer with 7 years in payments”.",
+      rule: "Strong verbs",
       kind: "fix",
     },
     {
@@ -23,6 +25,7 @@ const SUGGESTIONS = {
       entryId: "e1",
       problem: "“Responsible for payments service” says nothing about results",
       detail: "Add what the service handled, such as its volume.",
+      rule: "Impact",
       kind: "yours",
     },
   ],
@@ -32,6 +35,21 @@ let calls: unknown[] = [];
 let failing = false;
 let invalid = false;
 const COST: Record<string, number> = { "mock-fast": 0.002, "mock-good": 0.031 };
+
+type Call = {
+  model: string;
+  messages: { role: string; content: string }[];
+  response_format?: unknown;
+};
+
+/**
+ * A review's schema asks for suggestions; anything else edits the CV, so send that CV back. Relies on
+ * the prompts ending with "CV (JSON):\n\n" and the CV (review.ts, revise.ts).
+ */
+const answer = (call: Call) =>
+  JSON.stringify(call.response_format).includes('"suggestions"')
+    ? JSON.stringify(SUGGESTIONS)
+    : call.messages.at(-1)!.content.split("CV (JSON):\n\n")[1];
 
 Bun.serve({
   port,
@@ -43,7 +61,7 @@ Bun.serve({
       ({ failing = false, invalid = false } = await request.json());
       return new Response(null, { status: 204 });
     }
-    const call = await request.json();
+    const call: Call = await request.json();
     calls.push(call);
     await Bun.sleep(DELAY_MS);
     // 400, not 5xx: the AI SDK retries server errors.
@@ -62,7 +80,7 @@ Bun.serve({
           index: 0,
           message: {
             role: "assistant",
-            content: invalid ? "not JSON" : JSON.stringify(SUGGESTIONS),
+            content: invalid ? "not JSON" : answer(call),
           },
           finish_reason: "stop",
         },

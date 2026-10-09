@@ -2,7 +2,17 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createCv, deleteCv, getCv, listCvs, updateCv } from "./cvs";
+import { DEFAULT_CHECKLIST } from "@/lib/cv/checklist";
+import { getChecklist, saveChecklist } from "./checklist";
+import {
+  createCv,
+  deleteCv,
+  getCv,
+  listCvs,
+  removeTodo,
+  saveTodos,
+  updateCv,
+} from "./cvs";
 import { createImport, discardAllImports, getImport } from "./imports";
 import { getSourcePdf } from "./sources";
 
@@ -18,7 +28,73 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+describe("checklist", () => {
+  test("the default until the user saves their own, which then reads back", async () => {
+    expect(await getChecklist()).toEqual(DEFAULT_CHECKLIST);
+    const rules = [{ name: "Tense", text: "Past tense throughout." }];
+    await saveChecklist(rules);
+    expect(await getChecklist()).toEqual(rules);
+  });
+
+  test("rejects an empty list and duplicate names", async () => {
+    await expect(saveChecklist([])).rejects.toThrow(/at least one rule/);
+    await expect(
+      saveChecklist([
+        { name: "Tense", text: "One" },
+        { name: "Tense", text: "Two" },
+      ]),
+    ).rejects.toThrow(/different name/);
+  });
+});
+
 describe("cvs", () => {
+  test("Done removes that to-do, whatever order quick clicks arrive in", async () => {
+    const cv = await createCv("Base");
+    const [a, b, c] = ["One", "Two", "Three"].map((problem) => ({
+      area: "summary" as const,
+      entryId: null,
+      problem,
+      detail: "",
+      rule: "Impact",
+    }));
+    await saveTodos(cv.id, [a, b, c]);
+    await Promise.all([removeTodo(cv.id, b), removeTodo(cv.id, a)]);
+    expect((await getCv(cv.id))?.todos).toEqual([c]);
+  });
+
+  test("an autosave and a to-do save at the same time both land", async () => {
+    const cv = await createCv("Base");
+    const todo = {
+      area: "summary" as const,
+      entryId: null,
+      problem: "Add a number",
+      detail: "",
+      rule: "Impact",
+    };
+    await Promise.all([
+      updateCv(cv.id, { content: { ...cv.content, headline: "Engineer" } }),
+      saveTodos(cv.id, [todo]),
+    ]);
+    const saved = await getCv(cv.id);
+    expect(saved?.content.headline).toBe("Engineer");
+    expect(saved?.todos).toEqual([todo]);
+  });
+
+  test("saving to-dos keeps updatedAt, so an open editor doesn't reload", async () => {
+    const cv = await createCv("Base");
+    const todo = {
+      area: "summary" as const,
+      entryId: null,
+      problem: "Add a number",
+      detail: "How much faster?",
+      rule: "Impact",
+    };
+    await saveTodos(cv.id, [todo]);
+    const saved = await getCv(cv.id);
+    expect(saved?.todos).toEqual([todo]);
+    expect(saved?.updatedAt).toBe(cv.updatedAt);
+  });
+
   test("create → get round trip", async () => {
     const cv = await createCv("Résumé: Senior Backend Engineer");
     expect(cv.id).toMatch(/^resume-senior-backend-engineer-[a-z0-9]{4}$/);

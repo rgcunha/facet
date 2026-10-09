@@ -64,6 +64,7 @@ classDiagram
     +content: CvContent
     +job: Job or null
     +changes: Changes
+    +todos: Todo[]
     +lastRun: Run or null
     +createdAt: datetime
     +updatedAt: datetime
@@ -104,7 +105,22 @@ classDiagram
     +area: headline, summary, a list section or whole
     +entryId: string or null
     +problem, detail: string
+    +rule: a checklist rule's name
     +kind: fix or yours
+  }
+  class Todo {
+    <<schema>>
+    Suggestion without kind
+  }
+  class Checklist {
+    <<schema>>
+    +v: 1
+    +rules: ChecklistRule[] 1 to 15, unique names
+  }
+  class ChecklistRule {
+    <<schema>>
+    +name: string
+    +text: string
   }
   class Changes {
     <<schema>>
@@ -180,6 +196,9 @@ classDiagram
   Analysis "1" *-- "0..*" Requirement
   CvRecord "1" *-- "1" Changes
   CvRecord "1" *-- "0..1" Run : lastRun
+  CvRecord "1" *-- "0..*" Todo : todos
+  Todo ..> Suggestion : a "yours" suggestion
+  Checklist "1" *-- "1..15" ChecklistRule
   Changes "1" *-- "0..*" Flag
   CvContent "1" *-- "0..*" Experience
   CvContent "1" *-- "0..*" Education
@@ -255,8 +274,20 @@ classDiagram
   }
   class ReviewPanel {
     <<component>>
-    review on first open, kept while closed
-    suggestion checkboxes, Apply, Ask for something else, flagged names
+    start screen: Checklist, Model picker, Review (nothing runs before)
+    results: Can be fixed for you (Apply), Needs your input (Go to field)
+    rule tag per suggestion; Ask for something else on both screens
+  }
+  class ChecklistEditor {
+    <<component>>
+    What the review checks: view, Edit, Reset to default
+    Always on: the safety rules
+  }
+  class Todos {
+    <<component>>
+    TodosContext
+    TodoSpot: anchor and notes, on entries, sections, headline, summary, whole CV
+    +goTo(area, entryId) opens and focuses the entry
   }
   class MatchReportView {
     <<component>>
@@ -390,7 +421,8 @@ classDiagram
     <<module>>
     +modelContentSchema(ids)
     +withIds(parsed, known)
-    CV_PRACTICE, NO_NEW_FACTS_RULE, keepTermsRule
+    +cvPractice(rules)
+    NO_NEW_FACTS_RULE, keepTermsRule
   }
   class LlmGenerate {
     <<module>>
@@ -422,6 +454,24 @@ classDiagram
     +updateCv(id, patch)
     +deleteCv(id)
     +getBase(cv)
+    +saveTodos(id, todos) keeps updatedAt
+    +removeTodo(id, todo)
+    writes to one CV run one at a time
+  }
+  class ChecklistStore {
+    <<module>>
+    +getChecklist() the default until saved
+    +saveChecklist(rules)
+  }
+  class TodoPlaces {
+    <<module>>
+    +hasPlace(content, todo)
+    +placeTodos(content, todos)
+    +sameTodo(a, b)
+  }
+  class DefaultChecklist {
+    <<module>>
+    DEFAULT_CHECKLIST
   }
   class ImportStore {
     <<module>>
@@ -500,6 +550,22 @@ classDiagram
   Editor --> ReviewPanel
   Editor --> ServerActions : reviseAction
   ReviewPanel --> ServerActions : reviewAction
+  ReviewPanel --> ChecklistEditor
+  ReviewPanel --> Todos : goTo
+  ChecklistEditor --> ServerActions : saveChecklistAction
+  ChecklistEditor --> DefaultChecklist : Reset to default
+  Editor --> Todos : provides the CV's to-dos
+  Editor --> ServerActions : doneTodoAction
+  Fields --> Todos : notes and To do badge
+  ServerActions --> ChecklistStore
+  EditorPage --> ChecklistStore : getChecklist
+  ChecklistStore --> DefaultChecklist
+  ServerActions --> TodoPlaces : placeTodos
+  CvStore --> TodoPlaces : sameTodo
+  Todos --> TodoPlaces : hasPlace
+  ChecklistStore --> FileStore
+  ReviewCv --> DefaultChecklist
+  ReviseCv --> DefaultChecklist
   ReviewPanel --> PiiDetector : detectInText, in the browser
   ReviewPanel --> Format : SECTION_TITLES
   PiiDetector --> Format : cvText
@@ -595,7 +661,8 @@ classDiagram
   - When the variant is in another language than its base, only language-neutral facts are checked: employers, schools, dates, links and skills. The import step detects each CV's language for this.
   - Revert and Keep (`revertChange`, `keepChange`) update the changes and their flags together.
 - **Review, Apply, Ask for something else and "Tighten to fit" edit a CV in place**, all through `reviseAction` → `reviseCv` with a different instruction: the ticked suggestions (`applyInstruction`), the user's own text, or "remove about N words" (`tightenInstruction`).
-  - `reviewAction` runs when the Review panel opens and returns `Suggestion`s, judged against one checklist of good CV practice (`CV_PRACTICE`, shared with `reviseCv`) read for the candidate's field. Impact without a number counts; numbers are never invented.
+  - `reviewAction` runs when the user clicks Review (the panel opens on the checklist and the Model picker) and returns `Suggestion`s, judged against the user's checklist (`data/checklist.json`, or `DEFAULT_CHECKLIST`; `cvPractice` states it in the prompt, shared with `reviseCv`) read for the candidate's field. Each suggestion names the rule it comes from; the output schema allows only the checklist's names. The safety rules (`NO_NEW_FACTS_RULE`, placeholders, ids, terms to keep) stay in code. Impact without a number counts; numbers are never invented.
+  - The suggestions only the user can act on (`kind: "yours"`) replace the CV's `todos` (`saveTodos`, which keeps `updatedAt` so the open editor doesn't reload). `placeTodos` moves a to-do whose entry the CV doesn't have to its section; in the form, one whose entry was deleted since shows under the whole CV (`hasPlace`). They show as notes until marked done (`doneTodoAction` → `removeTodo`, by value). Writes to one CV are queued, so a to-do save and an autosave can't overwrite each other. Saving the checklist refreshes the page, so the saved list is passed back down.
   - On a variant, both get the job requirements the CV matches (`scoreCv(...).found`) as terms to keep, so a fix doesn't lower the match.
   - The user's instruction is scanned in the browser (`detectInText`): emails, links, phones, and capitalised word pairs that look like a person's name and aren't in the CV. Those are masked by default ("Send as written" unmasks one) and passed as extra private values for that request only; they aren't saved.
   - The editor is locked while the model edits, and the action only writes if the CV wasn't saved in the meantime, so no edit is lost. Changes are merged with earlier ones (the earliest version wins), so Revert always goes back to what you had, and `findFabrications` flags new facts and numbers.

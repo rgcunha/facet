@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { MockLanguageModelV4 } from "ai/test";
 import type { PrivateValue } from "@/lib/cv/schema";
 import { z } from "zod";
+import { DEFAULT_CHECKLIST } from "@/lib/cv/checklist";
 import { emptyContent } from "@/lib/cv/empty";
 import { privateValuesOf } from "@/lib/privacy/values";
 import { modelContentSchema } from "./content";
@@ -312,6 +313,7 @@ test("a review masks the CV's private values and passes on the job's keywords", 
         entryId: null,
         problem: "Names {{NAME}} in the third person",
         detail: "Drop the name.",
+        rule: "Strong verbs",
         kind: "fix",
       },
     ],
@@ -319,7 +321,7 @@ test("a review masks the CV's private values and passes on the job's keywords", 
   const { suggestions, run } = await reviewCv(
     { ...emptyContent(), summary: "Alex Moreno runs Kubernetes." },
     privateValues,
-    { keep: ["Kubernetes"] },
+    { keep: ["Kubernetes"], rules: DEFAULT_CHECKLIST },
     model,
   );
   const sent = JSON.stringify(model.doGenerateCalls);
@@ -327,6 +329,60 @@ test("a review masks the CV's private values and passes on the job's keywords", 
   expect(sent).toContain("Keep these terms wherever they appear");
   expect(suggestions[0].problem).toBe("Names Alex Moreno in the third person");
   expect(run.model).toBe(model.modelId);
+});
+
+test("a review and its fixes follow the user's checklist; the always-on rules stay", async () => {
+  const rules = [{ name: "Past tense", text: "Use past tense everywhere." }];
+  const suggestion = {
+    area: "whole",
+    entryId: null,
+    problem: "Present tense in the current role",
+    detail: "Switch to past tense.",
+    kind: "fix",
+  };
+  const model = recordingModel({
+    suggestions: [{ ...suggestion, rule: "Past tense" }],
+  });
+  const { suggestions } = await reviewCv(emptyContent(), [], { rules }, model);
+  expect(suggestions[0].rule).toBe("Past tense");
+  const reviewed = JSON.stringify(model.doGenerateCalls);
+  expect(reviewed).toContain("Past tense: Use past tense everywhere.");
+  expect(reviewed).not.toContain("Present tense for the current role");
+
+  const editor = recordingModel(emptyContent());
+  await reviseCv(emptyContent(), "Apply the fixes.", [], { rules }, editor);
+  const revised = JSON.stringify(editor.doGenerateCalls);
+  expect(revised).toContain("Past tense: Use past tense everywhere.");
+  expect(revised).toContain(
+    "Never add anything the CV doesn't already contain",
+  );
+
+  // A suggestion naming a rule that isn't in the checklist doesn't fit the schema.
+  await expect(
+    reviewCv(
+      emptyContent(),
+      [],
+      { rules },
+      recordingModel({ suggestions: [{ ...suggestion, rule: "Impact" }] }),
+    ),
+  ).rejects.toThrow(/couldn't produce a valid answer/);
+});
+
+test("a checklist rule holding a private value is blocked like any other request", async () => {
+  const model = recordingModel({ suggestions: [] });
+  await expect(
+    reviewCv(
+      emptyContent(),
+      privateValues,
+      {
+        rules: [
+          { name: "Contact", text: "Never mention alex.moreno@example.com" },
+        ],
+      },
+      model,
+    ),
+  ).rejects.toThrow(/email/);
+  expect(model.doGenerateCalls).toHaveLength(0);
 });
 
 test("revising masks names in the user's instruction as well as the CV, and keeps entry ids", async () => {
@@ -344,7 +400,7 @@ test("revising masks names in the user's instruction as well as the CV, and keep
     content,
     "Mention that I built ledgers with Marta Silva's team.",
     [...privateValues, colleague],
-    {},
+    { rules: DEFAULT_CHECKLIST },
     model,
   );
   const sent = JSON.stringify(model.doGenerateCalls);
@@ -361,6 +417,7 @@ test("Apply sends only the fixes, never what only the user can add", () => {
       entryId: "a",
       problem: "Filler",
       detail: "Cut it.",
+      rule: "Strong verbs",
       kind: "fix",
     },
     {
@@ -368,6 +425,7 @@ test("Apply sends only the fixes, never what only the user can add", () => {
       entryId: "a",
       problem: "Add a number",
       detail: "How much faster?",
+      rule: "Impact",
       kind: "yours",
     },
   ]);

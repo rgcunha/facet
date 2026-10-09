@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Editor } from "@/components/editor/Editor";
 import { ModelsProvider } from "@/components/model";
 import { modelsOrError } from "@/lib/llm/models";
+import { getChecklist } from "@/lib/store/checklist";
 import { getBase, getCv } from "@/lib/store/cvs";
 
 export default async function EditorPage({
@@ -9,7 +10,11 @@ export default async function EditorPage({
   searchParams,
 }: PageProps<"/cv/[id]">) {
   const { id } = await params;
-  const [cv, query] = await Promise.all([getCv(id), searchParams]);
+  const [cv, query, checklist] = await Promise.all([
+    getCv(id),
+    searchParams,
+    getChecklist(),
+  ]);
   if (!cv) notFound();
   const base = cv.baseId ? await getBase(cv) : null; // null too if the base was deleted
 
@@ -33,6 +38,8 @@ export default async function EditorPage({
         base={base ?? undefined}
         openTailor={query.tailor === "1"}
         lastRun={cv.lastRun}
+        checklist={checklist}
+        todos={cv.todos}
       />
     </ModelsProvider>
   );

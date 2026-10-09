@@ -113,8 +113,8 @@ export const analysisSchema = z.object({
 });
 
 /**
- * One finding of a review. Not stored: it lives in the Review panel until it's closed. No defaults,
- * like `analysisSchema`: the model writes every field.
+ * One finding of a review. It lives in the Review panel; the ones only the candidate can act on are
+ * also kept on the CV as to-dos. No defaults, like `analysisSchema`: the model writes every field.
  */
 export const suggestionSchema = z.object({
   area: z
@@ -128,14 +128,43 @@ export const suggestionSchema = z.object({
     .describe("The id of the entry it is about, or null for a whole section"),
   problem: z.string().describe("What's wrong, quoting the words in question"),
   detail: z.string().describe("One sentence on how to fix it"),
+  rule: z.string().describe("The name of the checklist rule it comes from"),
   kind: z
     .enum(["fix", "yours"])
     .describe(
       '"fix": can be fixed with what the CV already says. "yours": needs something only the candidate knows, such as a real number',
     ),
 });
-export const reviewSchema = z.object({
-  suggestions: z.array(suggestionSchema),
+/** What needs the candidate's own input, kept on the CV as a note on its entry until marked done. */
+export const todoSchema = suggestionSchema.omit({ kind: true });
+
+/** One rule of the review checklist: a short name (shown as a tag on suggestions) and the rule itself. */
+const checklistRuleSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give every rule a short name.")
+    .max(40, "Keep rule names under 40 characters."),
+  text: z
+    .string()
+    .trim()
+    .min(1, "A rule can't be empty.")
+    .max(500, "Keep each rule under 500 characters."),
+});
+
+export const checklistRulesSchema = z
+  .array(checklistRuleSchema)
+  .min(1, "Keep at least one rule.")
+  .max(15, "Keep the checklist to 15 rules.")
+  .refine(
+    (rules) => new Set(rules.map((r) => r.name)).size === rules.length,
+    "Give each rule a different name.",
+  );
+
+/** The review checklist, saved once for the tool (`data/checklist.json`). */
+export const checklistSchema = z.object({
+  v: z.literal(1),
+  rules: checklistRulesSchema,
 });
 
 /** The analysis a variant was tailored from, with the gaps the user confirmed. */
@@ -192,6 +221,8 @@ export const cvRecordSchema = z.object({
   job: jobSchema.nullable().default(null),
   /** What tailoring, a review or "Tighten to fit" changed, until the user reverts or keeps each change. */
   changes: changesSchema.prefault({}),
+  /** What the last review left for the candidate to do, shown on its entries until marked done. */
+  todos: listOf(todoSchema),
   /** The last model call that changed this CV (import, tailoring or an edit), for its banner. */
   lastRun: runSchema.nullable().default(null),
   createdAt: z.iso.datetime(),
@@ -231,5 +262,7 @@ export type Analysis = z.infer<typeof analysisSchema>;
 export type MatchReport = z.infer<typeof matchReportSchema>;
 export type Suggestion = z.infer<typeof suggestionSchema>;
 export type Run = z.infer<typeof runSchema>;
+export type Todo = z.infer<typeof todoSchema>;
+export type ChecklistRule = z.infer<typeof checklistRuleSchema>;
 /** A CV as templates render it and the match score reads it. */
 export type CvView = Pick<EditorValues, "contact" | "content" | "template">;

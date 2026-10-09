@@ -1,6 +1,11 @@
-import type { CvContent, PrivateValue, Suggestion } from "@/lib/cv/schema";
+import type {
+  ChecklistRule,
+  CvContent,
+  PrivateValue,
+  Suggestion,
+} from "@/lib/cv/schema";
 import {
-  CV_PRACTICE,
+  cvPractice,
   EMPHASIS_RULE,
   idsOf,
   keepTermsRule,
@@ -12,14 +17,16 @@ import {
 import { generateStructured } from "./generate";
 import type { ModelRef } from "./provider";
 
-const SYSTEM = `You edit a CV as instructed. You return the complete CV content, edited.
+const system = (
+  rules: ChecklistRule[],
+) => `You edit a CV as instructed. You return the complete CV content, edited.
 
 - Change only what the instruction asks for; leave everything else exactly as it is. Never drop an entry or bullet point unless the instruction asks for it.
 - ${NO_NEW_FACTS_RULE} The one exception: facts the instruction itself states come from the candidate, and you may add them where they belong. If the instruction needs something neither it nor the CV says, do only the part you can do without it.
 - Keep the language and the order of entries, unless the instruction asks otherwise.
 - Keep each entry's "id" exactly as given.
 - What you rewrite follows good CV practice:
-${CV_PRACTICE}
+${cvPractice(rules)}
 ${PLACEHOLDER_RULE}
 ${EMPHASIS_RULE}
 Contact details are handled separately: never put them in any field.`;
@@ -51,12 +58,12 @@ export async function reviseCv(
   content: CvContent,
   instruction: string,
   privateValues: PrivateValue[],
-  { keep = [] as string[] } = {},
+  { keep = [], rules }: { keep?: string[]; rules: ChecklistRule[] },
   model: ModelRef,
 ) {
   const { output, run } = await generateStructured({
     schema: modelContentSchema("keep"),
-    system: SYSTEM + keepTermsRule(keep),
+    system: system(rules) + keepTermsRule(keep),
     prompt: `Instruction:\n\n${instruction}\n\nCV (JSON):\n\n${JSON.stringify(content)}`,
     privateValues,
     model,

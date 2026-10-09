@@ -7,6 +7,7 @@ import { UNTITLED_CV } from "@/lib/cv/empty";
 import {
   type Analysis,
   analysisSchema,
+  checklistRulesSchema,
   type CvRecord,
   editorValuesSchema,
   type PrivateValue,
@@ -14,6 +15,8 @@ import {
   type Run,
   type Suggestion,
   suggestionSchema,
+  type Todo,
+  todoSchema,
 } from "@/lib/cv/schema";
 import { NO_CHANGES, recordChanges } from "@/lib/cv/changes";
 import { TEMPLATE_INFO } from "@/lib/cv/templates";
@@ -31,7 +34,17 @@ import {
 import { extractLines } from "@/lib/pdf/extract";
 import { detectPrivate } from "@/lib/privacy/detect";
 import { contactFromValues, privateValuesOf } from "@/lib/privacy/values";
-import { createCv, deleteCv, getBase, getCv, updateCv } from "@/lib/store/cvs";
+import { getChecklist, saveChecklist } from "@/lib/store/checklist";
+import {
+  createCv,
+  deleteCv,
+  getBase,
+  getCv,
+  removeTodo,
+  saveTodos,
+  updateCv,
+} from "@/lib/store/cvs";
+import { placeTodos } from "@/lib/cv/todos";
 import {
   createImport,
   deleteImport,
@@ -252,20 +265,33 @@ export async function tailorAction(
 const keepTerms = (cv: CvRecord) =>
   cv.job?.report ? scoreCv(cv, cv.job.report).found : [];
 
-/** Reviews a CV against good CV practice. The suggestions are returned, not saved. */
+/**
+ * Reviews a CV against the user's checklist. The suggestions are returned; the ones only the user can
+ * act on also replace the CV's to-dos, so they outlast the panel.
+ */
 export async function reviewAction(
   cvId: string,
   model: unknown,
-): Promise<{ suggestions: Suggestion[]; run: Run } | { error: string }> {
-  const cv = await getCv(cvId);
+): Promise<
+  { suggestions: Suggestion[]; run: Run; todos: Todo[] } | { error: string }
+> {
+  const [cv, rules] = await Promise.all([getCv(cvId), getChecklist()]);
   if (!cv) return { error: "This CV no longer exists." };
   try {
-    return await reviewCv(
+    const { suggestions, run } = await reviewCv(
       cv.content,
       privateValuesOf(cv),
-      { keep: keepTerms(cv) },
+      { keep: keepTerms(cv), rules },
       modelIdSchema.parse(model),
     );
+    const todos = placeTodos(
+      cv.content,
+      suggestions
+        .filter((s) => s.kind === "yours")
+        .map((s) => todoSchema.parse(s)), // drops `kind`
+    );
+    await saveTodos(cvId, todos);
+    return { suggestions, run, todos };
   } catch (e) {
     return { error: errorMessage(e) };
   }
@@ -300,7 +326,7 @@ export async function reviseAction(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const extra = z.array(privateValueSchema).safeParse(masks);
   if (!extra.success) return { error: "Invalid masks." };
-  const cv = await getCv(cvId);
+  const [cv, rules] = await Promise.all([getCv(cvId), getChecklist()]);
   if (!cv) return { error: "This CV no longer exists." };
   const req = parsed.data;
   let instruction: string;
@@ -318,7 +344,7 @@ export async function reviseAction(
       cv.content,
       instruction,
       [...privateValuesOf(cv), ...extra.data],
-      { keep: keepTerms(cv) },
+      { keep: keepTerms(cv), rules },
       modelIdSchema.parse(model),
     );
     // The editor is locked during the call; still, never overwrite a save made meanwhile.
@@ -341,6 +367,34 @@ export async function reviseAction(
     return { error: errorMessage(e) };
   }
   refresh(); // the editor reloads with the edited content (it remounts on a new updatedAt)
+}
+
+/** Saves the review checklist (for every CV). Apply, Ask and Tighten follow it too. */
+export async function saveChecklistAction(
+  rules: unknown,
+): Promise<ActionResult> {
+  const parsed = checklistRulesSchema.safeParse(rules);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  try {
+    await saveChecklist(parsed.data);
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
+  refresh(); // the page passes the saved list down; content is untouched, so the editor doesn't remount
+}
+
+/** Marks one of a CV's to-dos as done. */
+export async function doneTodoAction(
+  cvId: string,
+  todo: unknown,
+): Promise<ActionResult> {
+  const parsed = todoSchema.safeParse(todo);
+  if (!parsed.success) return { error: "Invalid to-do." };
+  try {
+    await removeTodo(cvId, parsed.data);
+  } catch (e) {
+    return { error: errorMessage(e) };
+  }
 }
 
 export async function fetchJobAction(

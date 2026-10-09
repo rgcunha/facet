@@ -48,8 +48,10 @@ Available once Phase 1 sets up the project:
 - Plain JSON files under `DATA_DIR` (default `./data`, gitignored):
   - `cvs/<id>.json`: one file per base CV or variant, with its own contact details and PII vault
   - `sources/<id>.pdf`: the original imported PDF
+  - `checklist.json`: the review checklist the user edits (Review, Apply, Ask and Tighten follow it; the default is `lib/cv/checklist.ts`). The safety rules (never invent facts, placeholders, ids) stay in code, never in the checklist.
 - Only `lib/store/*` touches the file system. Pages and components go through server actions.
 - Every read is validated with zod. Every file has a `v` version field. Writes are atomic (write a tmp file, then rename).
+- A CV's `todos` (what a review left for the user) are saved without stamping `updatedAt`, so an open editor doesn't reload.
 - Variants are independent copies of their base; there is no syncing. Tailoring, Review (Apply, Ask for something else) and "Tighten to fit" record previous values in `changes.original` so fields can be reverted.
 
 ## Code rules (keep it lean)

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { shortId } from "@/lib/cv/empty";
 import {
+  type ChecklistRule,
   type CvContent,
   cvContentSchema,
   LIST_SECTIONS,
@@ -89,14 +90,12 @@ export const PLACEHOLDER_RULE =
   "Personal details were replaced with placeholders such as {{NAME}} or {{URL_2}}. Keep a placeholder exactly as written where it belongs; never guess what it stands for.";
 
 /** What a good CV does, for reviewing and revising one. Read for the candidate's field. */
-export const CV_PRACTICE = `Good CV practice, read for the candidate's field (judge it from the headline and roles):
-- Each bullet shows impact, not a duty. Impact needn't be a number: scope and ownership, before → after, technical difficulty, who benefited, adoption by others, reliability or risk removed, and leadership all count. Use a number only when the CV already has it.
-- Bullets start with a strong verb. No filler or clichés ("passionate", "results-driven", "responsible for", "helped with", "various", "successfully").
-- Present tense for the current role, past tense for earlier ones. No "I" or "my".
-- One date format, punctuation style and spelling variant throughout.
-- The summary is 2–3 lines on level and focus, and doesn't repeat the headline.
-- Older roles get fewer bullets than recent ones. Vague bullets are made specific or dropped.
-- Skills are grouped, and the most important ones are backed by the experience.`;
+/** The user's review checklist, as the prompt states it: one rule per line, named. */
+export const cvPractice = (rules: ChecklistRule[]) =>
+  [
+    "Good CV practice, read for the candidate's field (judge it from the headline and roles):",
+    ...rules.map((r) => `- ${r.name}: ${r.text}`),
+  ].join("\n");
 
 /** For prompts that may only change wording, never facts. */
 export const NO_NEW_FACTS_RULE =

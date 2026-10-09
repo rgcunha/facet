@@ -12,6 +12,7 @@ import {
 import { blankItem } from "@/lib/cv/empty";
 import { changeKind } from "@/lib/cv/changes";
 import { EntryChange, SectionChanges, useChanges } from "./changes";
+import { TodoSpot, useTodos } from "./todos";
 import type { CvContent, EditorValues, ListSection } from "@/lib/cv/schema";
 
 type StringListPath = FieldPathByValue<EditorValues, string[]>;
@@ -246,10 +247,12 @@ export function ItemList<K extends ListSection>(props: {
                   {change}
                 </span>
               )}
+              <TodoBadge section={section} id={entryId(f)} />
             </summary>
             <div className="flex flex-col gap-3 border-t border-line p-3">
               <EntryChange section={section} id={entryId(f)} />
               {children(`${name}.${i}`, i)}
+              <TodoSpot area={section} entryId={entryId(f)} />
               <div className="flex flex-wrap gap-1">
                 <button
                   type="button"
@@ -280,6 +283,18 @@ export function ItemList<K extends ListSection>(props: {
         );
       })}
       <SectionChanges section={section} currentIds={fields.map(entryId)} />
+      <TodoSpot area={section} />
     </Card>
+  );
+}
+
+/** On a collapsed entry's summary row, so a to-do inside isn't missed. */
+function TodoBadge({ section, id }: { section: ListSection; id: string }) {
+  const count = useTodos(section, id).mine.length;
+  if (!count) return null;
+  return (
+    <span className="rounded border border-dashed border-muted px-1.5 text-xs font-semibold text-subtle">
+      To do
+    </span>
   );
 }
