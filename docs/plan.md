@@ -48,7 +48,7 @@ UI mockups: https://claude.ai/artifact/BLt5UVRZijW8LjVAkXmEf5 (v2 row = this pla
    - Page-fit indicator ("Fits on 1 page" / "4 lines over 1 page") with **Tighten to fit**.
    - **Tailor…** opens a panel in place of the right pane: job description textarea (main input), optional URL + Fetch, output language, length (1 or 2 pages), and **Create tailored variant**.
    - Variant mode: changed fields are highlighted with "Was: …" and **Revert** per field (plus Revert all). A fabrication warning appears only when the check finds something new. A "Not in your CV" keyword list.
-   - **Export PDF** uses the browser's print to PDF. The default filename is `First-Last_Company.pdf`.
+   - **Export PDF** downloads a PDF rendered on the server (headless Chromium prints the print view). The filename is `First-Last_Company.pdf`.
 
 Out of scope for now: a settings page, a second template, keyword scores, per-change accept/reject cards, keeping variants in sync with their base, cover letters, OCR, auth.
 
@@ -61,7 +61,7 @@ Drop PDF ─► upload ───────────────────
 Import screen ◄── redacted text + chips ◄┘
 "Parse CV" ────────────────────────────► guard ─► LLM adapter ─────────────────────────► Claude / OpenRouter / Ollama
 Editor ◄── rehydrated CV JSON ◄──────────┘   (structured output, zod)
-Preview (same React template) ─► window.print() with @page CSS ─► PDF
+Preview (same React template) ─► /cv/[id]/pdf: headless Chromium prints /cv/[id]/print (@page CSS) ─► PDF download
 ```
 
 ### Privacy layer
@@ -183,7 +183,7 @@ There is one profile per installation, because each person runs their own copy. 
 
 - **PDF in:** `unpdf` (pdf.js) on the server; text items with font sizes help detect the name and headings. A PDF with no text layer gets a clear error and an option to start from an empty CV.
 - **Original PDF tab:** built as a route handler, `/cv/[id]/source`, that serves `sources/<id>.pdf` in an iframe, so the browser's own PDF viewer shows it and no client-side pdf.js is needed. Highlighting the source line behind a selected field is a nice-to-have.
-- **Template & export:** one React template, `templates/Classic.tsx`, used by the preview and by a print-only route `/cv/[id]/print`, with `@page { size: A4; margin: … }`. Export opens that route and calls `window.print()`. Setting `document.title` to `First-Last_Company` makes that the default filename.
+- **Template & export:** one React template, `templates/Classic.tsx`, used by the preview and by a print-only route `/cv/[id]/print`, with `@page { size: A4; margin: … }`. Export downloads `/cv/[id]/pdf`, which prints that route in headless Chromium (`page.pdf`, CSS page size) and names the file `First-Last_Company.pdf`. (Until 2026-10-11 export opened the route and called `window.print()`; the print dialog's paper size, margins and headers added pages the preview didn't show.)
 - **Page fit:** the preview renders at real A4 size (mm units). Compare the content height with the page height and convert the overflow to lines. **Tighten to fit** calls `tightenCv`; it records the previous values in `changes.original`, so its edits are highlighted with Revert, the same way as tailoring.
 - **Fabrication check** (`lib/cv/fabrication.ts`, no LLM): compares the sets of companies, roles, dates, degrees and skill items between the variant and its base. Anything new becomes a `flags[]` entry, shown as the warning banner (Remove / Keep).
 - **Job input:** pasted text is the main input. Fetch is best effort: server-side `fetch` + `@mozilla/readability` + `jsdom`, and on failure the message says to paste the text instead.
@@ -570,12 +570,15 @@ Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each bu
 - **To-dos saved with the CV:** `CvRecord.todos: { area, entryId, rule, problem, detail }[]`, replaced by the "yours" suggestions each time a review finishes. Shown as a dashed note at the end of their entry (or under the headline, summary or section) with **Done**, which removes it. Saving to-dos doesn't stamp `updatedAt` (they aren't content), so the editor doesn't reload and the review results stay on screen. To-dos for an entry that no longer exists aren't shown. A variant starts with none. The changes banner adds "N things need your input, marked in the form."
 - **Ask for something else:** on the start screen too, so a one-off change or a fact only you know needs no review first. New hint: "Add something only you know, or ask for a one-off change", e.g. "Payouts got 40% faster after the ledger redesign." It still uses the panel's model, the instruction scan and masking, and tracked changes.
 - **Actions:** `getChecklistAction()`, `saveChecklistAction(rules)` (zod: 1–15 rules, name and text trimmed and non-empty, text under 500 characters); `reviewAction` and `reviseAction` read the saved checklist; `reviewAction` saves the to-dos; `doneTodoAction(cvId, todo)`.
+- **Stay where you were (added after use):** Apply, Ask and Tighten no longer reload the editor. `reviseAction` returns the edited content and changes, the editor loads them into the form, and the panels keep their state: after Ask the box clears with "Done, highlighted in the form" for the next request; after Apply the fixes list becomes "N fixes applied … Review again to check the result" while Needs your input stays. The page keys the editor by CV id.
 - **Out of scope:** a checklist per CV or per field, sharing checklists, grouping or filtering results by rule, to-dos from anywhere but a review, a history of reviews.
 - **Tests:**
   - Unit: the checklist store (default when no file, save and read back, validation); the review prompt contains the edited rules and still the always-on rules; the rule enum follows the list; saving to-dos keeps `updatedAt`; the privacy test with an edited checklist.
   - E2e: opening Review runs nothing until **Review** (the mock records no call); an edited rule is in the request the mock receives; a "yours" suggestion becomes a note that survives Apply and a reload, and **Done** removes it; Ask works from the start screen. The existing review tests click **Review** first.
 - **Diagrams:** add `Checklist` (schema and store), `Todo` on `CvRecord`, `rule` on `Suggestion`; `ReviewPanel` gets the start screen and the two sections.
 - **`CLAUDE.md`:** the review checklist is user-editable and stored in `data/checklist.json`; the safety rules stay in code.
+
+**PDF export rendered on the server (added after use, 2026-10-11).** ✅ Done. Export went through the browser's print dialog: an extra tab, and its paper size, margins and headers could add a page the preview didn't show. Now **Export PDF** (editor) and **PDF** (library) download the file straight away: `/cv/[id]/pdf` prints the print view in headless Chromium (`playwright`, now a dependency; the browser is the one the e2e tests already install) with the CSS page size, and names it `First-Last_Company.pdf`. Text stays real text, for ATS. Without Chromium the button says to run `bunx playwright install chromium`. E2e: an edit made just before Export is in the downloaded file, which is one A4 page with the name and headline as text.
 
 **Every phase ends with the Definition of done in `CLAUDE.md`:** `bun run check` + `bun test` pass → `/simplify` → `/code-review` → diagrams up to date → UI tried in the browser.
 
@@ -593,7 +596,7 @@ Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each bu
   - `src/app/page.tsx` (Library) + `import-drop-zone.tsx`
   - `src/app/import/[id]/{page,import-review}.tsx`
   - `src/app/cv/[id]/page.tsx`
-  - `src/app/cv/[id]/print/page.tsx`
+  - `src/app/cv/[id]/print/page.tsx` + `src/app/cv/[id]/pdf/route.ts` (`src/lib/pdf/render.ts`)
   - `src/app/cv/[id]/source/route.ts`
 - **Editor and actions:**
   - `src/components/editor/{Editor,fields,Preview,use-autosave}.tsx` (+ `ReviewPanel.tsx` in Phase 6)

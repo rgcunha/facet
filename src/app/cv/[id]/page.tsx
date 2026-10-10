@@ -21,8 +21,8 @@ export default async function EditorPage({
   return (
     <ModelsProvider {...modelsOrError()}>
       <Editor
-        // Remount when the CV changed on the server (e.g. "Tighten to fit"), so the form reloads.
-        key={cv.updatedAt}
+        // A new editor for another CV. Edits by the model (Apply, Ask, Tighten) are loaded into the form instead.
+        key={cv.id}
         id={cv.id}
         defaultValues={{
           title: cv.title,

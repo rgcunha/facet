@@ -243,6 +243,14 @@ classDiagram
     <<page>>
     GET original PDF
   }
+  class PdfRoute {
+    <<page>>
+    GET the CV as a PDF download
+  }
+  class ExportPdfButton {
+    <<component>>
+    saves first, downloads, shows errors
+  }
 
   class ImportDropZone
   <<component>> ImportDropZone
@@ -261,8 +269,7 @@ classDiagram
   <<component>> DeleteCvButton
   class Editor {
     <<component>>
-    +exportPdf()
-    +revise(request, masks)
+    +revise(request, masks) loads the result into the form, panels stay
     import and changes banners show lastRun
     right pane: panels kept in Activity once opened
     +track(panel, run) running in header, reopens on error
@@ -319,12 +326,11 @@ classDiagram
     <<module>>
     TEMPLATE_INFO: name, singleColumn, wordsPerLine
   }
-  class AutoPrint
-  <<component>> AutoPrint
   class useAutosave {
     <<hook>>
     +status
     +flush()
+    +load(values) a saved model edit, not saved again
   }
 
   class ServerActions {
@@ -359,6 +365,10 @@ classDiagram
   class PdfExtractor {
     <<module>>
     +extractLines(bytes)
+  }
+  class PdfRenderer {
+    <<module>>
+    +renderPdf(url) headless Chromium
   }
   class PiiDetector {
     <<module>>
@@ -498,7 +508,7 @@ classDiagram
   }
   class PageGeometry {
     <<module>>
-    PAGE, PAGE_VARS, PRINT_PAGE_CSS
+    PAGE, PRINT_PAGE_CSS
     +exportFileName(name, title)
   }
   class EmptyValues {
@@ -538,8 +548,14 @@ classDiagram
   EditorPage --> Editor
   PrintPage --> CvStore
   PrintPage --> Templates : the CV's template
-  PrintPage --> AutoPrint
   PrintPage --> PageGeometry
+  LibraryPage --> ExportPdfButton : PDF
+  Editor --> ExportPdfButton : Export PDF, after flush
+  ExportPdfButton ..> PdfRoute : fetch
+  PdfRoute --> CvStore
+  PdfRoute --> PageGeometry : exportFileName
+  PdfRoute --> PdfRenderer
+  PdfRenderer ..> PrintPage : prints
   SourceRoute --> CvStore
   SourceRoute --> SourceStore : getSourcePdf
 
@@ -662,10 +678,12 @@ classDiagram
   - Revert and Keep (`revertChange`, `keepChange`) update the changes and their flags together.
 - **Review, Apply, Ask for something else and "Tighten to fit" edit a CV in place**, all through `reviseAction` → `reviseCv` with a different instruction: the ticked suggestions (`applyInstruction`), the user's own text, or "remove about N words" (`tightenInstruction`).
   - `reviewAction` runs when the user clicks Review (the panel opens on the checklist and the Model picker) and returns `Suggestion`s, judged against the user's checklist (`data/checklist.json`, or `DEFAULT_CHECKLIST`; `cvPractice` states it in the prompt, shared with `reviseCv`) read for the candidate's field. Each suggestion names the rule it comes from; the output schema allows only the checklist's names. The safety rules (`NO_NEW_FACTS_RULE`, placeholders, ids, terms to keep) stay in code. Impact without a number counts; numbers are never invented.
-  - The suggestions only the user can act on (`kind: "yours"`) replace the CV's `todos` (`saveTodos`, which keeps `updatedAt` so the open editor doesn't reload). `placeTodos` moves a to-do whose entry the CV doesn't have to its section; in the form, one whose entry was deleted since shows under the whole CV (`hasPlace`). They show as notes until marked done (`doneTodoAction` → `removeTodo`, by value). Writes to one CV are queued, so a to-do save and an autosave can't overwrite each other. Saving the checklist refreshes the page, so the saved list is passed back down.
+  - The suggestions only the user can act on (`kind: "yours"`) replace the CV's `todos` (`saveTodos`, which keeps `updatedAt`: it stands for content changes). `placeTodos` moves a to-do whose entry the CV doesn't have to its section; in the form, one whose entry was deleted since shows under the whole CV (`hasPlace`). They show as notes until marked done (`doneTodoAction` → `removeTodo`, by value). Writes to one CV are queued, so a to-do save and an autosave can't overwrite each other. Saving the checklist refreshes the page, so the saved list is passed back down.
   - On a variant, both get the job requirements the CV matches (`scoreCv(...).found`) as terms to keep, so a fix doesn't lower the match.
   - The user's instruction is scanned in the browser (`detectInText`): emails, links, phones, and capitalised word pairs that look like a person's name and aren't in the CV. Those are masked by default ("Send as written" unmasks one) and passed as extra private values for that request only; they aren't saved.
+  - `reviseAction` returns the new content and changes; the editor loads them into the form (`useAutosave().load`, which doesn't save it again) instead of remounting, so the panels stay where they were (Ask clears for the next request; Apply shows how many fixes it made). The page keys the editor by CV id only.
   - The editor is locked while the model edits, and the action only writes if the CV wasn't saved in the meantime, so no edit is lost. Changes are merged with earlier ones (the earliest version wins), so Revert always goes back to what you had, and `findFabrications` flags new facts and numbers.
+- **PDF export is rendered on the server.** `ExportPdfButton` saves pending edits, then fetches `/cv/[id]/pdf`; `PdfRenderer` opens `/cv/[id]/print` in headless Chromium (Playwright) and prints it with the `@page` size and margins from `PageGeometry`, the same template and engine as the preview. The file downloads as `First-Last_Company.pdf`; a failure (e.g. Chromium not installed) is shown under the button.
 - **Job pages are fetched best-effort** (`JobFetcher`: Readability + linkedom). Pasting the text is the main way in.
 - **Pages read data on the server** via the stores; **every write goes through `ServerActions`**, which validate their input with zod. Client components never touch the file system.
 - **Only `lib/store/*` uses `node:fs`.** Every file (JSON and PDF) is written atomically through `FileStore.writeFileAtomic`, and JSON is validated on every read. Ids from URLs are checked with `isSafeId`, so a URL can't reach outside `DATA_DIR`.

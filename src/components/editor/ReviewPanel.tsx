@@ -53,19 +53,21 @@ export function ReviewPanel({
   track: (
     run: () => Promise<string | undefined>,
   ) => Promise<string | undefined>;
-  /** Applies an edit; the editor locks, then reloads with the changes highlighted. */
-  revise: (request: ReviseRequest, masks?: PrivateValue[]) => void;
+  /** Applies an edit (the editor locks meanwhile) and loads it into the form; resolves to whether it worked. */
+  revise: (request: ReviseRequest, masks?: PrivateValue[]) => Promise<boolean>;
   revising: boolean;
 }) {
   /**
    * `snapshot` is the CV as it was reviewed: suggestions quote its words, so they don't apply once it's
-   * edited. `unticked`: the fixes the user turned down, by index.
+   * edited. `unticked`: the fixes the user turned down, by index. `applied`: how many fixes Apply
+   * made; the list no longer matches the CV after that.
    */
   const [result, setResult] = useState<{
     suggestions: Suggestion[];
     run: Run;
     snapshot: string;
     unticked: number[];
+    applied?: number;
   }>();
   /** Back on the start screen after a review, to change the checklist or the model. */
   const [atStart, setAtStart] = useState(false);
@@ -75,6 +77,8 @@ export function ReviewPanel({
   const [reviewing, startReview] = useTransition();
   const [asking, setAsking] = useState(false);
   const [instruction, setInstruction] = useState("");
+  /** The last instruction was applied: the box is clear for the next one. */
+  const [asked, setAsked] = useState(false);
   const [sendAsWritten, setSendAsWritten] = useState<string[]>([]);
   const content = useWatch<EditorValues, "content">({ name: "content" });
   const model = useModel();
@@ -146,7 +150,7 @@ export function ReviewPanel({
           type="button"
           className="btn-link"
           onClick={onClose}
-          // A review keeps running while closed; applying locks the page until it reloads.
+          // A review keeps running while closed; the editor is locked while the model edits.
           disabled={revising}
         >
           Close
@@ -240,57 +244,69 @@ export function ReviewPanel({
               <SectionHeading id="fixes-h" count={fixes.length}>
                 Can be fixed for you
               </SectionHeading>
-              <fieldset className="flex flex-col gap-4" disabled={busy}>
-                <legend className="sr-only">Fixes to apply</legend>
-                {fixSections.map((section) => (
-                  <div key={section} className="flex flex-col gap-2">
-                    <h4 className="text-sm font-semibold text-subtle">
-                      {section}
-                    </h4>
-                    {fixes
-                      .filter((s) => s.section === section)
-                      .map((s) => (
-                        <label
-                          key={s.i}
-                          className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-line px-3 py-2.5"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 size-5 accent-accent"
-                            checked={!unticked.includes(s.i)}
-                            onChange={() => toggle(s.i)}
-                          />
-                          <SuggestionText suggestion={s} />
-                        </label>
-                      ))}
+              {result.applied ? (
+                <p role="status" className="text-sm">
+                  {plural(result.applied, "fix", "fixes")} applied, highlighted
+                  in the form. Review again to check the result.
+                </p>
+              ) : (
+                <>
+                  <fieldset className="flex flex-col gap-4" disabled={busy}>
+                    <legend className="sr-only">Fixes to apply</legend>
+                    {fixSections.map((section) => (
+                      <div key={section} className="flex flex-col gap-2">
+                        <h4 className="text-sm font-semibold text-subtle">
+                          {section}
+                        </h4>
+                        {fixes
+                          .filter((s) => s.section === section)
+                          .map((s) => (
+                            <label
+                              key={s.i}
+                              className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-line px-3 py-2.5"
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 size-5 accent-accent"
+                                checked={!unticked.includes(s.i)}
+                                onChange={() => toggle(s.i)}
+                              />
+                              <SuggestionText suggestion={s} />
+                            </label>
+                          ))}
+                      </div>
+                    ))}
+                  </fieldset>
+                  {stale && (
+                    <p role="status" className="text-sm text-warn">
+                      You edited the CV after this review. Review again before
+                      applying the fixes.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="max-w-md text-[13px] text-muted">
+                      {variant
+                        ? "Fixes change only this variant. To improve every future application, review your base CV."
+                        : "Fixes show up in the form with Was, Revert and Keep. They only change this CV: variants you already made stay as they are."}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-primary min-h-12 px-5"
+                      onClick={async () => {
+                        if (await revise({ suggestions: ticked }))
+                          setResult({ ...result, applied: ticked.length });
+                      }}
+                      disabled={busy || stale || ticked.length === 0}
+                    >
+                      {revising
+                        ? "Applying… (can take a minute)"
+                        : ticked.length
+                          ? `Apply ${plural(ticked.length, "fix", "fixes")} →`
+                          : "Nothing to apply"}
+                    </button>
                   </div>
-                ))}
-              </fieldset>
-              {stale && (
-                <p role="status" className="text-sm text-warn">
-                  You edited the CV after this review. Review again before
-                  applying the fixes.
-                </p>
+                </>
               )}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="max-w-md text-[13px] text-muted">
-                  {variant
-                    ? "Fixes change only this variant. To improve every future application, review your base CV."
-                    : "Fixes show up in the form with Was, Revert and Keep. They only change this CV: variants you already made stay as they are."}
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary min-h-12 px-5"
-                  onClick={() => revise({ suggestions: ticked })}
-                  disabled={busy || stale || ticked.length === 0}
-                >
-                  {revising
-                    ? "Applying… (can take a minute)"
-                    : ticked.length
-                      ? `Apply ${plural(ticked.length, "fix", "fixes")} →`
-                      : "Nothing to apply"}
-                </button>
-              </div>
             </section>
           )}
 
@@ -345,7 +361,10 @@ export function ReviewPanel({
                 rows={3}
                 className="textarea"
                 value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
+                onChange={(e) => {
+                  setInstruction(e.target.value);
+                  setAsked(false);
+                }}
                 disabled={busy}
                 placeholder="e.g. Payouts got 40% faster after the ledger redesign."
               />
@@ -382,6 +401,12 @@ export function ReviewPanel({
                 </div>
               );
             })}
+            {asked && (
+              <p role="status" className="text-sm">
+                Done, highlighted in the form. Ask for something else, or close
+                the panel to see the preview.
+              </p>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="flex-[1_1_280px] text-[13px] text-muted">
                 Uses the model above. Sent with your CV, never your contact
@@ -390,7 +415,12 @@ export function ReviewPanel({
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => revise({ instruction }, masks)}
+                onClick={async () => {
+                  if (!(await revise({ instruction }, masks))) return;
+                  setInstruction("");
+                  setSendAsWritten([]);
+                  setAsked(true);
+                }}
                 disabled={busy || instruction.trim().length < 3}
               >
                 {revising ? "Sending…" : "Send"}

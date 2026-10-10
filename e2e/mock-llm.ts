@@ -1,7 +1,8 @@
 /**
  * An OpenAI-compatible stand-in for the model provider, so e2e tests make no paid calls. It records
  * every request (tests check them for personal data and the model asked for) and answers a review
- * with fixed suggestions; any other request (Apply, Ask, Tighten) gets the CV it was sent, unchanged.
+ * with fixed suggestions; any other request (Apply, Ask, Tighten) gets the CV it was sent, with
+ * " (edited)" added to the headline.
  * It reports a cost per model like OpenRouter does.
  * GET /calls lists the recorded requests. POST /reset clears them and sets how the next calls end:
  * `failing` (an API error) or `invalid` (an answer that doesn't fit the schema).
@@ -43,13 +44,17 @@ type Call = {
 };
 
 /**
- * A review's schema asks for suggestions; anything else edits the CV, so send that CV back. Relies on
- * the prompts ending with "CV (JSON):\n\n" and the CV (review.ts, revise.ts).
+ * A review's schema asks for suggestions; anything else edits the CV, so send that CV back, edited.
+ * Relies on the prompts ending with "CV (JSON):\n\n" and the CV (review.ts, revise.ts).
  */
-const answer = (call: Call) =>
-  JSON.stringify(call.response_format).includes('"suggestions"')
-    ? JSON.stringify(SUGGESTIONS)
-    : call.messages.at(-1)!.content.split("CV (JSON):\n\n")[1];
+function answer(call: Call) {
+  if (JSON.stringify(call.response_format).includes('"suggestions"'))
+    return JSON.stringify(SUGGESTIONS);
+  const cv = JSON.parse(
+    call.messages.at(-1)!.content.split("CV (JSON):\n\n")[1],
+  );
+  return JSON.stringify({ ...cv, headline: `${cv.headline} (edited)` });
+}
 
 Bun.serve({
   port,

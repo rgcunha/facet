@@ -80,7 +80,7 @@ describe("cvs", () => {
     expect(saved?.todos).toEqual([todo]);
   });
 
-  test("saving to-dos keeps updatedAt, so an open editor doesn't reload", async () => {
+  test("saving to-dos keeps updatedAt, which stands for content changes", async () => {
     const cv = await createCv("Base");
     const todo = {
       area: "summary" as const,

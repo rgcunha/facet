@@ -7,7 +7,9 @@ import { UNTITLED_CV } from "@/lib/cv/empty";
 import {
   type Analysis,
   analysisSchema,
+  type Changes,
   checklistRulesSchema,
+  type CvContent,
   type CvRecord,
   editorValuesSchema,
   type PrivateValue,
@@ -321,7 +323,7 @@ export async function reviseAction(
   request: ReviseRequest,
   model: unknown,
   masks: PrivateValue[] = [],
-): Promise<ActionResult> {
+): Promise<{ content: CvContent; changes: Changes } | { error: string }> {
   const parsed = reviseRequestSchema.safeParse(request);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const extra = z.array(privateValueSchema).safeParse(masks);
@@ -353,20 +355,24 @@ export async function reviseAction(
         error:
           "The CV changed while the model was editing it. Nothing was overwritten; try again.",
       };
-    await updateCv(cvId, {
+    const changes = recordChanges(
+      cv.changes,
+      cv.content,
       content,
-      changes: recordChanges(cv.changes, cv.content, content, base.content, {
+      base.content,
+      {
         translated: cv.language !== base.language,
         knownSkills: cv.job?.report?.confirmed,
         // Facts and numbers the user typed come from them, not the model.
         stated: "instruction" in req ? req.instruction : "",
-      }),
-      lastRun: run,
-    });
+      },
+    );
+    await updateCv(cvId, { content, changes, lastRun: run });
+    refresh(); // for the banner's last run; the editor loads the content itself and keeps its panels
+    return { content, changes };
   } catch (e) {
     return { error: errorMessage(e) };
   }
-  refresh(); // the editor reloads with the edited content (it remounts on a new updatedAt)
 }
 
 /** Saves the review checklist (for every CV). Apply, Ask and Tighten follow it too. */
@@ -380,7 +386,7 @@ export async function saveChecklistAction(
   } catch (e) {
     return { error: errorMessage(e) };
   }
-  refresh(); // the page passes the saved list down; content is untouched, so the editor doesn't remount
+  refresh(); // the page passes the saved list down
 }
 
 /** Marks one of a CV's to-dos as done. */

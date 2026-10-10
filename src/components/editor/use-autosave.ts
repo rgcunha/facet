@@ -11,7 +11,8 @@ const DELAY_MS = 800;
 
 /**
  * Saves the form 800 ms after the last change. `flush` saves right away and resolves to whether it
- * succeeded (used before export).
+ * succeeded (used before export). `load` puts values that are already saved (a model's edit) into the
+ * form without saving them again.
  */
 export function useAutosave(form: UseFormReturn<EditorValues>, id: string) {
   const [status, setStatus] = useState<SaveStatus>("saved");
@@ -35,8 +36,19 @@ export function useAutosave(form: UseFormReturn<EditorValues>, id: string) {
     }
   }, [form, id]);
 
+  const loading = useRef(false);
+  const load = useCallback(
+    (values: EditorValues) => {
+      loading.current = true;
+      form.reset(values);
+      loading.current = false;
+    },
+    [form],
+  );
+
   useEffect(() => {
     const { unsubscribe } = form.watch(() => {
+      if (loading.current) return;
       edits.current++;
       setStatus("unsaved");
       clearTimeout(timer.current);
@@ -44,7 +56,7 @@ export function useAutosave(form: UseFormReturn<EditorValues>, id: string) {
     });
     return () => {
       unsubscribe();
-      clearTimeout(timer.current); // a stale save must not fire after the editor is gone (e.g. remounted)
+      clearTimeout(timer.current); // a stale save must not fire after the editor is gone
     };
   }, [form, flush]);
 
@@ -61,7 +73,7 @@ export function useAutosave(form: UseFormReturn<EditorValues>, id: string) {
     };
   }, [flush]);
 
-  return { status, flush };
+  return { status, flush, load };
 }
 
 /** Shown when an action that saves first (tailor, review, revise) couldn't save. */

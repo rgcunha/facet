@@ -71,7 +71,7 @@ function patchCv(id: string, change: (cv: CvRecord) => Partial<CvRecord>) {
 export const updateCv = (id: string, patch: CvPatch) =>
   patchCv(id, () => ({ ...patch, updatedAt: new Date().toISOString() }));
 
-/** To-dos aren't content: saving them keeps `updatedAt`, so an open editor doesn't reload. */
+/** To-dos aren't content: saving them keeps `updatedAt`, which stands for content changes (`reviseAction` checks it). */
 export const saveTodos = (id: string, todos: Todo[]) =>
   patchCv(id, () => ({ todos }));
 

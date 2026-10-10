@@ -1,6 +1,4 @@
-import type { CSSProperties } from "react";
-
-/** A4 page geometry shared by the live preview (page-fit) and the print route (@page rule). */
+/** A4 page geometry shared by the live preview (page-fit) and the print route (@page rule the PDF is printed with). */
 export const PAGE = {
   widthMm: 210,
   heightMm: 297,
@@ -11,13 +9,6 @@ export const PAGE = {
 export const PAGE_CONTENT_HEIGHT_MM = PAGE.heightMm - 2 * PAGE.marginYMm;
 
 export const PX_PER_MM = 96 / 25.4;
-
-/** Screen view of the print route: an A4 sheet with the print margins as padding (removed when printing). */
-export const PAGE_VARS = {
-  "--page-w": `${PAGE.widthMm}mm`,
-  "--page-mx": `${PAGE.marginXMm}mm`,
-  "--page-my": `${PAGE.marginYMm}mm`,
-} as CSSProperties;
 
 export const PRINT_PAGE_CSS = `@page { size: A4; margin: ${PAGE.marginYMm}mm ${PAGE.marginXMm}mm; }`;
 

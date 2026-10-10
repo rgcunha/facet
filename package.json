@@ -18,6 +18,7 @@
     "ai": "^7.0.127",
     "linkedom": "^0.18.13",
     "next": "16.3.8",
+    "playwright": "^1.64.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.89.0",

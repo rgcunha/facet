@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { UNTITLED_CV } from "@/lib/cv/empty";
 import { plural } from "@/lib/cv/format";
 import { listCvs } from "@/lib/store/cvs";
@@ -120,13 +121,11 @@ export default async function LibraryPage() {
                           <Link href={`/cv/${v.id}`} className="btn-link">
                             Edit
                           </Link>
-                          <a
-                            href={`/cv/${v.id}/print`}
-                            target="_blank"
+                          <ExportPdfButton
+                            id={v.id}
+                            label="PDF"
                             className="btn-link"
-                          >
-                            PDF
-                          </a>
+                          />
                           <DeleteCvButton id={v.id} title={v.title} />
                         </li>
                       ))}

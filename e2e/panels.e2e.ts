@@ -98,7 +98,7 @@ test("a review keeps running while its panel is closed", async ({ page }) => {
   await reviewPanel.getByRole("button", { name: "Close" }).click();
   await expect(review).toHaveText("Review… · running");
 
-  // Tightening reloads the editor, which would discard the running review.
+  // A model edit now would leave the running review's result (and its to-dos) behind the CV.
   await page.getByRole("button", { name: "Tighten to fit" }).click();
   const wait = page.getByText("Wait for the Review or Tailor panel to finish");
   await expect(wait).toBeVisible();
@@ -253,4 +253,33 @@ test("Ask for something else works without a review first", async ({
   await expect
     .poll(async () => JSON.stringify(await mockCalls()))
     .toContain("Payouts got 40% faster");
+});
+
+test("after Ask or Apply the panel stays where you were", async ({ page }) => {
+  const { review, reviewPanel, startReview } = await openNewCv(page);
+  const ask = reviewPanel.getByLabel(/Add something only you know/);
+
+  await review.click();
+  await reviewPanel
+    .getByRole("button", { name: /Ask for something else/ })
+    .click();
+  await ask.fill("Put the payments service first.");
+  await reviewPanel.getByRole("button", { name: "Send" }).click();
+  await expect(
+    reviewPanel.getByText("Done, highlighted in the form."),
+  ).toBeVisible();
+  await expect(ask).toHaveValue("");
+  // The edit is in the form, highlighted, without reloading the editor.
+  await expect(page.getByLabel("Headline", { exact: true })).toHaveValue(
+    "Backend engineer (edited)",
+  );
+  await expect(page.getByText("Was: Backend engineer")).toBeVisible();
+
+  await review.click();
+  await startReview();
+  await reviewPanel.getByRole("button", { name: "Apply 1 fix →" }).click();
+  await expect(
+    reviewPanel.getByText("1 fix applied, highlighted in the form."),
+  ).toBeVisible();
+  await expect(reviewPanel.getByText("Needs your input · 1")).toBeVisible();
 });

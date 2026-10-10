@@ -18,6 +18,7 @@ import {
   type ReviseRequest,
   reviseAction,
 } from "@/app/actions";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { RunInfo, useModel } from "@/components/model";
 import { ChangesBanner, FabricationWarnings, FieldChange } from "./changes";
 import {
@@ -37,8 +38,9 @@ import { SAVE_FAILED, type SaveStatus, useAutosave } from "./use-autosave";
 
 type Panel = "review" | "tailor";
 
+// A review would save to-dos for, and a tailored variant be made from, the CV as it was before the edit.
 const WAIT_FOR_PANEL =
-  "Wait for the Review or Tailor panel to finish first: changing the CV now would discard its result.";
+  "Wait for the Review or Tailor panel to finish first: its result would miss this change.";
 
 const statusText: Record<SaveStatus, string> = {
   saved: "Saved",
@@ -86,7 +88,7 @@ export function Editor({
   const [running, setRunning] = useState({ review: false, tailor: false });
   const [reviseError, setReviseError] = useState<string>();
   const [revising, startRevise] = useTransition();
-  const { status, flush } = useAutosave(form, id);
+  const { status, flush, load } = useAutosave(form, id);
   const baseScore = useBaseScore(base, job?.report ?? undefined);
   const model = useModel();
   const [todos, setTodos] = useState(savedTodos);
@@ -99,17 +101,29 @@ export function Editor({
     }
   };
 
-  // Saved first, so the model edits what is on screen; the page then reloads with the result.
-  const revise = (request: ReviseRequest, masks?: PrivateValue[]) => {
-    if (running.review || running.tailor) return setReviseError(WAIT_FOR_PANEL);
-    startRevise(async () => {
-      setReviseError(undefined);
-      const result = (await flush())
-        ? await reviseAction(id, request, model?.id ?? "", masks)
-        : { error: SAVE_FAILED };
-      if (result) setReviseError(result.error);
+  // Saved first, so the model edits what is on screen. Its result is loaded into the form, so the panels stay
+  // as they were (Ask can go on). Resolves to whether it worked, also when the action throws.
+  const revise = (request: ReviseRequest, masks?: PrivateValue[]) =>
+    new Promise<boolean>((resolve) => {
+      if (running.review || running.tailor) {
+        setReviseError(WAIT_FOR_PANEL);
+        return resolve(false);
+      }
+      startRevise(async () => {
+        let done = false;
+        try {
+          setReviseError(undefined);
+          const result = (await flush())
+            ? await reviseAction(id, request, model?.id ?? "", masks)
+            : { error: SAVE_FAILED };
+          if ("error" in result) setReviseError(result.error);
+          else load({ ...form.getValues(), ...result });
+          done = !("error" in result);
+        } finally {
+          resolve(done);
+        }
+      });
     });
-  };
   const closePanel = () => setPanel(null);
   const togglePanel = (name: Panel) => {
     setPanel(panel === name ? null : name);
@@ -148,16 +162,6 @@ export function Editor({
       )}
     </button>
   );
-
-  // Open the tab synchronously (popup blockers), then point it at the print view once the latest edits are saved.
-  const exportPdf = async () => {
-    const tab = window.open("", "_blank");
-    if (!(await flush())) {
-      tab?.close(); // The status shows the save error; don't print an outdated version.
-      return;
-    }
-    if (tab) tab.location.href = `/cv/${id}/print`;
-  };
 
   return (
     <FormProvider {...form}>
@@ -200,9 +204,13 @@ export function Editor({
           </label>
           {panelButton("review", "Review…")}
           {panelButton("tailor", "Tailor to a job…")}
-          <button type="button" className="btn-primary" onClick={exportPdf}>
-            Export PDF
-          </button>
+          <ExportPdfButton
+            id={id}
+            label="Export PDF"
+            className="btn-primary"
+            saveFirst={flush}
+            disabled={revising} // saving now would make the model's edit fail
+          />
         </div>
       </header>
 

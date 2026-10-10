@@ -22,7 +22,7 @@ Next.js (App Router) + TypeScript + Tailwind · zod · react-hook-form · Vercel
 Available once Phase 1 sets up the project:
 
 - `bun install` / `bun add <pkg>` / `bun add -d <pkg>`: dependencies (never `npm`, `npx`, `yarn` or `pnpm`; use `bunx` for one-off tools)
-- `bun run dev`: start the app on localhost
+- `bun run dev`: start the app on localhost (PDF export needs Chromium once: `bunx playwright install chromium`)
 - `bun test`: unit tests (Bun's built-in runner, `*.test.ts` next to the module)
 - `bun run e2e`: browser tests (Playwright, `e2e/*.e2e.ts`). They build the app and run it on port 3100 against a temp `DATA_DIR` and a local mock model (`e2e/mock-llm.ts`), so they never make a paid call and run beside `bun run dev`. One-time setup: `bunx playwright install chromium`.
 - `bun run check`: `tsc --noEmit` + ESLint + Prettier check + `knip` (unused code/deps) + `jscpd` (duplication). **Must pass before a change is done.**
@@ -51,7 +51,9 @@ Available once Phase 1 sets up the project:
   - `checklist.json`: the review checklist the user edits (Review, Apply, Ask and Tighten follow it; the default is `lib/cv/checklist.ts`). The safety rules (never invent facts, placeholders, ids) stay in code, never in the checklist.
 - Only `lib/store/*` touches the file system. Pages and components go through server actions.
 - Every read is validated with zod. Every file has a `v` version field. Writes are atomic (write a tmp file, then rename).
-- A CV's `todos` (what a review left for the user) are saved without stamping `updatedAt`, so an open editor doesn't reload.
+- A CV's `todos` (what a review left for the user) are saved without stamping `updatedAt`, which stands for content changes.
+- After a model edit (Apply, Ask, Tighten) the editor loads the returned content into the form (`useAutosave().load`, which doesn't save it again); it isn't remounted, so panels keep their state. The page keys the editor by CV id only.
+- **PDF export** is rendered on the server: `/cv/[id]/pdf` prints the `/cv/[id]/print` view in headless Chromium (`playwright`, `lib/pdf/render.ts`) and returns the file as a download, so it matches the preview and needs no print dialog. A copy without Chromium gets a clear error naming `bunx playwright install chromium`.
 - Variants are independent copies of their base; there is no syncing. Tailoring, Review (Apply, Ask for something else) and "Tighten to fit" record previous values in `changes.original` so fields can be reverted.
 
 ## Code rules (keep it lean)
@@ -64,7 +66,7 @@ Available once Phase 1 sets up the project:
 - **No dead code.** No commented-out code, unused exports, leftover TODO stubs or unused dependencies (`knip` enforces this).
 - **Comments explain why, not what.** Code should read clearly without them.
 - **Errors:** validate at the edges (uploads, file reads, LLM output, fetch) with zod. Show clear messages to the user. Never swallow errors silently.
-- **Dependencies:** add one only when it clearly saves meaningful code. Prefer the platform: browser print for PDF export, `fetch`, `crypto.randomUUID`.
+- **Dependencies:** add one only when it clearly saves meaningful code. Prefer the platform: `fetch`, `crypto.randomUUID`.
 - **UI:** match the v2 mockups. Use real `<button>`, `<a>`, `<label>` and `<input>` elements, with touch targets of at least 44px. Use the shared tokens (one accent, amber only for masked personal data).
 - **Tests:** unit-test the logic modules (privacy, store, fabrication check, schema). No snapshot tests of the UI. E2e tests cover user flows that unit tests can't reach (panels, background calls); they never call a real model, and they check that no contact detail reaches the mock.
 
