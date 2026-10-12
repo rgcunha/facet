@@ -54,7 +54,8 @@ Available once Phase 1 sets up the project:
 - A CV's `todos` (what a review left for the user) are saved without stamping `updatedAt`, which stands for content changes.
 - After a model edit (Apply, Ask, Tighten) the editor loads the returned content into the form (`useAutosave().load`, which doesn't save it again); it isn't remounted, so panels keep their state. The page keys the editor by CV id only.
 - **PDF export** is rendered on the server: `/cv/[id]/pdf` prints the `/cv/[id]/print` view in headless Chromium (`playwright`, `lib/pdf/render.ts`) and returns the file as a download, so it matches the preview and needs no print dialog. A copy without Chromium gets a clear error naming `bunx playwright install chromium`.
-- Variants are independent copies of their base; there is no syncing. Tailoring, Review (Apply, Ask for something else) and "Tighten to fit" record previous values in `changes.original` so fields can be reverted.
+- Variants are independent copies of their base; there is no syncing. Tailoring, Review (Apply, Ask for something else) and "Tighten to fit" record previous values in `changes.original`, and each change is kept or reverted on its card in the Changes tab (word-level diff, `lib/cv/diff.ts`).
+- Tailoring applies only the edits the user ticked in the Tailor panel (suggestions, confirmed skills, reorder, fit, translate); the prompt forbids every other change.
 
 ## Code rules (keep it lean)
 
@@ -87,4 +88,4 @@ For each change or phase:
 
 ## Out of scope (don't add without asking)
 
-Settings page, per-change accept/reject UI, syncing variants with their base, cover letters, OCR, auth, hosting, database.
+Settings page, syncing variants with their base, cover letters, OCR, auth, hosting, database.

@@ -10,8 +10,8 @@ import {
   useWatch,
 } from "react-hook-form";
 import { blankItem } from "@/lib/cv/empty";
-import { changeKind } from "@/lib/cv/changes";
-import { EntryChange, SectionChanges, useChanges } from "./changes";
+import { changeKind, entryKey } from "@/lib/cv/changes";
+import { ChangedBadge, SectionChanges, useChanges } from "./changes";
 import { TodoSpot, useTodos } from "./todos";
 import type { CvContent, EditorValues, ListSection } from "@/lib/cv/schema";
 
@@ -203,7 +203,7 @@ export function ItemList<K extends ListSection>(props: {
     typeof name,
     "fieldKey"
   >({ name, keyName: "fieldKey" });
-  const { original } = useChanges();
+  const { original, keep } = useChanges();
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
   const setOpen = (id: string, open: boolean) =>
     setOpenIds((prev) => {
@@ -243,14 +243,14 @@ export function ItemList<K extends ListSection>(props: {
             <summary className="flex min-h-12 cursor-pointer items-center gap-2 px-3">
               <EntrySummary<K> path={`${name}.${i}`} summary={summary} />
               {change && (
-                <span className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent-strong capitalize">
-                  {change}
-                </span>
+                <ChangedBadge
+                  changeKey={entryKey(section, entryId(f))}
+                  label={change === "added" ? "Added" : "Changed"}
+                />
               )}
               <TodoBadge section={section} id={entryId(f)} />
             </summary>
             <div className="flex flex-col gap-3 border-t border-line p-3">
-              <EntryChange section={section} id={entryId(f)} />
               {children(`${name}.${i}`, i)}
               <TodoSpot area={section} entryId={entryId(f)} />
               <div className="flex flex-wrap gap-1">
@@ -273,7 +273,11 @@ export function ItemList<K extends ListSection>(props: {
                 <button
                   type="button"
                   className="btn-link ml-auto text-danger hover:text-danger"
-                  onClick={() => remove(i)}
+                  onClick={() => {
+                    // An entry the model added and the user removes is no longer a change to review.
+                    if (change === "added") keep(entryKey(section, entryId(f)));
+                    remove(i);
+                  }}
                 >
                   Remove
                 </button>

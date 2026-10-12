@@ -24,6 +24,7 @@ export default async function EditorPage({
         // A new editor for another CV. Edits by the model (Apply, Ask, Tighten) are loaded into the form instead.
         key={cv.id}
         id={cv.id}
+        language={cv.language}
         defaultValues={{
           title: cv.title,
           pages: cv.pages,

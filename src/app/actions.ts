@@ -26,7 +26,12 @@ import { fetchJobText } from "@/lib/job/fetch";
 import { scoreCv } from "@/lib/match/score";
 import { analyzeCv } from "@/lib/llm/analyze";
 import { structureCv } from "@/lib/llm/structure";
-import { tailorCv } from "@/lib/llm/tailor";
+import {
+  chosenEdits,
+  hasEdits,
+  tailorCv,
+  tailorEditsSchema,
+} from "@/lib/llm/tailor";
 import { reviewCv } from "@/lib/llm/review";
 import {
   applyInstruction,
@@ -184,19 +189,17 @@ export async function analyzeAction(
   }
 }
 
-const tailorInputSchema = z.object({
+const tailorInputSchema = tailorEditsSchema.extend({
   jobText: jobTextSchema,
   url: z.string().trim(),
-  language: z.string(),
-  pages: z.union([z.literal(1), z.literal(2)]),
   report: analysisSchema,
-  confirmed: z.array(z.string()),
   model: modelIdSchema,
 });
 
 /**
- * Creates a variant of a CV tailored to a job posting from its match report, and opens it. Only the
- * CV content and the job text are sent, masked; changes and possible fabrications are recorded locally.
+ * Creates a variant of a CV tailored to a job posting with the edits the user ticked, and opens it.
+ * Only the CV content and the job text are sent, masked; changes and possible fabrications are
+ * recorded locally. With nothing ticked, no model is called: the variant is a copy for this job.
  */
 export async function tailorAction(
   cvId: string,
@@ -204,13 +207,11 @@ export async function tailorAction(
 ): Promise<ActionResult> {
   const parsed = tailorInputSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { jobText, url, language, pages, model } = parsed.data;
-  // Input hygiene: confirmed names must be gaps of the report (both come from this user's own browser).
+  const { jobText, url, model } = parsed.data;
+  const edits = chosenEdits(parsed.data.report, parsed.data);
   const report = {
     ...parsed.data.report,
-    confirmed: parsed.data.confirmed.filter((name) =>
-      parsed.data.report.gaps.some((g) => g.name === name),
-    ),
+    confirmed: edits.confirmed,
     createdAt: new Date().toISOString(),
   };
   const cv = await getCv(cvId);
@@ -221,40 +222,31 @@ export async function tailorAction(
     // Changes and possible fabrications are judged against the base CV, even when tailoring a variant further.
     const found = await getBase(cv);
     const base = found ?? cv; // the base was deleted: judge against this CV
-    const tailored = await tailorCv(
-      cv.content,
-      jobText,
-      { language, pages, report },
-      privateValuesOf(cv),
-      model,
-    );
-    const variantLanguage = language || tailored.job.language;
-    const variant = await createCv(tailored.job.title || cv.title, {
+    const { content, run } = hasEdits(edits)
+      ? await tailorCv(cv.content, jobText, edits, privateValuesOf(cv), model)
+      : { content: cv.content, run: null };
+    const language = edits.translate ?? cv.language;
+    const variant = await createCv(report.title || cv.title, {
       kind: "variant",
       baseId: found?.id ?? cv.baseId,
-      language: variantLanguage,
-      pages,
+      language,
+      pages: edits.fit ?? cv.pages,
       template: cv.template,
       contact: cv.contact,
       vault: cv.vault,
-      content: tailored.content,
+      content,
       job: {
-        ...tailored.job,
+        title: report.title,
+        company: report.company,
         url,
         text: jobText,
         report,
       },
-      changes: recordChanges(
-        NO_CHANGES,
-        cv.content,
-        tailored.content,
-        base.content,
-        {
-          translated: variantLanguage !== base.language,
-          knownSkills: report.confirmed,
-        },
-      ),
-      lastRun: tailored.run,
+      changes: recordChanges(NO_CHANGES, cv.content, content, base.content, {
+        translated: language !== base.language,
+        knownSkills: report.confirmed,
+      }),
+      lastRun: run,
     });
     variantId = variant.id;
   } catch (e) {

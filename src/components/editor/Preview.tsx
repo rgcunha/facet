@@ -15,6 +15,10 @@ import { PAGE, PAGE_CONTENT_HEIGHT_MM, PX_PER_MM } from "@/lib/cv/page";
 import { type CvView, type EditorValues, TEMPLATE_IDS } from "@/lib/cv/schema";
 import { TEMPLATE_INFO } from "@/lib/cv/templates";
 import { TEMPLATES } from "@/templates";
+import { useChanges } from "./changes";
+import { ChangesTab } from "./ChangesTab";
+
+export type PreviewTab = "preview" | "second" | "report" | "changes";
 
 const PAGE_WIDTH_PX = PAGE.widthMm * PX_PER_MM;
 const PAGE_CONTENT_PX = PAGE_CONTENT_HEIGHT_MM * PX_PER_MM;
@@ -36,14 +40,15 @@ const SHEET_STYLE = {
 
 /**
  * Live A4 preview, scaled to fit the pane, with a page-fit indicator and page-break guides.
- * A second tab compares with the original PDF (imported CV) or the base CV (tailored variant), and a
- * variant also has a tab with its match report.
+ * A second tab compares with the original PDF (imported CV) or the base CV (tailored variant), a
+ * variant also has a tab with its match report, and a CV the model changed has its Changes tab.
  */
 export function Preview({
   sourceUrl,
   base,
   report,
-  showSecond = false,
+  tab,
+  onTab,
   onTighten,
   tightening = false,
 }: {
@@ -51,7 +56,9 @@ export function Preview({
   base?: CvView;
   /** A tailored variant's match report. */
   report?: ReactNode;
-  showSecond?: boolean;
+  /** The tab shown; the editor opens Changes from its banner and badges. */
+  tab: PreviewTab;
+  onTab: (tab: PreviewTab) => void;
   /** Offered when the CV runs over its page target. */
   onTighten?: (overflowLines: number) => void;
   tightening?: boolean;
@@ -59,16 +66,24 @@ export function Preview({
   const second = sourceUrl
     ? { label: "Original PDF" }
     : base && { label: "Base CV" };
-  const tabs: { id: "preview" | "second" | "report"; label: string }[] = [
+  const { count } = useChanges();
+  const tabs: { id: PreviewTab; label: string }[] = [
     { id: "preview", label: "Preview" },
     ...(second ? [{ id: "second" as const, label: second.label }] : []),
     ...(report ? [{ id: "report" as const, label: "Match report" }] : []),
+    // Stays while open, so the last Keep or Revert ends on "All changes reviewed".
+    ...(count || tab === "changes"
+      ? [
+          {
+            id: "changes" as const,
+            label: count ? `Changes · ${count}` : "Changes",
+          },
+        ]
+      : []),
   ];
-  const [tab, setTab] = useState<(typeof tabs)[number]["id"]>(
-    second && showSecond ? "second" : "preview",
-  );
   // Once opened, the second tab stays mounted (just hidden), e.g. so a PDF isn't re-fetched.
-  const [secondOpened, setSecondOpened] = useState(tab === "second");
+  const [secondOpened, setSecondOpened] = useState(false);
+  if (tab === "second" && !secondOpened) setSecondOpened(true);
   // Deferred, so typing stays responsive while the preview catches up.
   const values = useDeferredValue(useWatch<EditorValues>() as EditorValues);
   const { setValue } = useFormContext<EditorValues>();
@@ -122,10 +137,7 @@ export function Preview({
                 type="button"
                 role="tab"
                 aria-selected={tab === t.id}
-                onClick={() => {
-                  setTab(t.id);
-                  if (t.id === "second") setSecondOpened(true);
-                }}
+                onClick={() => onTab(t.id)}
                 className={`min-h-[38px] px-3.5 ${tab === t.id ? "bg-ink font-semibold text-white" : "bg-white text-ink"}`}
               >
                 {t.label}
@@ -210,6 +222,11 @@ export function Preview({
         </div>
       )}
       {tab === "report" && <div className="p-6">{report}</div>}
+      {tab === "changes" && (
+        <div className="p-6">
+          <ChangesTab onDone={() => onTab("preview")} />
+        </div>
+      )}
       {/* Behind the other tabs the preview stays laid out (just invisible), so page fit is still measured. */}
       <div
         ref={paneRef}

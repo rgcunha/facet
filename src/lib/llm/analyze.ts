@@ -17,7 +17,9 @@ const SYSTEM = `You compare a CV with one job posting, the way a careful recruit
 - strengths: up to 5 short points where the CV clearly meets the posting, citing what in the CV shows it.
 - gaps: requirements the CV doesn't state but makes likely (e.g. Helm for someone running Kubernetes deployments). why: one sentence naming what in the CV suggests it. Only real hints; never guess.
 - missing: requirements the CV gives no sign of. A requirement is in at most one of strengths, gaps and missing.
-- suggestions: up to 4 concrete edits to the CV's wording or order that would match the posting better, without claiming anything new.
+- suggestions: up to 4 concrete edits to the CV's wording or order that would match the posting better, without claiming anything new. Each is one edit the candidate can accept or skip on its own, naming where it goes ("the headline", "the Orbital Pay bullets").
+- company: the hiring company as the posting names it, or empty if it doesn't.
+- language: the ISO 639-1 code of the posting's language.
 - Write in the language of the posting.
 ${PLACEHOLDER_RULE}`;
 
@@ -35,5 +37,9 @@ export async function analyzeCv(
     privateValues,
     model,
   });
-  return { analysis: output, run };
+  // Each suggestion is a checkbox, identified by its text.
+  return {
+    analysis: { ...output, suggestions: [...new Set(output.suggestions)] },
+    run,
+  };
 }

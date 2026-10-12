@@ -82,7 +82,7 @@ export const TEMPLATE_IDS = ["classic", "sidebar", "modern"] as const;
 const templateSchema = z.enum(TEMPLATE_IDS);
 
 export const cvIdSchema = z.string().regex(/^[a-z0-9-]{1,80}$/);
-const pagesSchema = z.union([z.literal(1), z.literal(2)]);
+export const pagesSchema = z.union([z.literal(1), z.literal(2)]);
 
 /** A requirement of a job, with the other words a CV may use for it ("k8s" for Kubernetes). */
 const requirementSchema = z.object({
@@ -97,6 +97,12 @@ const requirementSchema = z.object({
  */
 export const analysisSchema = z.object({
   title: z.string().describe("The job title, as the posting names it"),
+  company: z
+    .string()
+    .describe("The hiring company, as the posting names it, or empty"),
+  language: z
+    .string()
+    .describe("ISO 639-1 code of the job posting's language, e.g. en, de, pt"),
   yearsRequired: z
     .number()
     .int()
@@ -168,18 +174,20 @@ export const checklistSchema = z.object({
 });
 
 /** The analysis a variant was tailored from, with the gaps the user confirmed. */
-const matchReportSchema = analysisSchema.extend({
-  /** Tailoring may add these, and they aren't flagged as possible fabrications. */
-  confirmed: z.array(z.string()),
-  createdAt: z.iso.datetime(),
-});
+// The company is kept on the job, and the language only decides whether the panel offers to translate.
+const matchReportSchema = analysisSchema
+  .omit({ company: true, language: true })
+  .extend({
+    /** Tailoring may add these, and they aren't flagged as possible fabrications. */
+    confirmed: z.array(z.string()),
+    createdAt: z.iso.datetime(),
+  });
 
 const jobSchema = z.object({
   title: text,
   company: text,
   url: text,
   text: text,
-  language: text,
   /** The match report the variant was tailored from. */
   report: matchReportSchema.nullable().default(null),
 });

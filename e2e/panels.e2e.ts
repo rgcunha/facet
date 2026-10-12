@@ -273,13 +273,54 @@ test("after Ask or Apply the panel stays where you were", async ({ page }) => {
   await expect(page.getByLabel("Headline", { exact: true })).toHaveValue(
     "Backend engineer (edited)",
   );
-  await expect(page.getByText("Was: Backend engineer")).toBeVisible();
+  // The panel stays; the banner opens the edit's card.
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await expect(
+    page.getByRole("article", { name: "Headline" }).getByText("(edited)"),
+  ).toBeVisible();
 
-  await review.click();
   await startReview();
   await reviewPanel.getByRole("button", { name: "Apply 1 fix →" }).click();
   await expect(
     reviewPanel.getByText("1 fix applied, highlighted in the form."),
   ).toBeVisible();
   await expect(reviewPanel.getByText("Needs your input · 1")).toBeVisible();
+});
+
+test("tailoring applies only what you tick, and each change is kept or reverted on its card", async ({
+  page,
+}) => {
+  const { tailor } = await openNewCv(page);
+  const editorUrl = page.url();
+
+  await tailor.click();
+  await page
+    .getByLabel("Job description")
+    .fill("Platform Engineer at Halden. ".repeat(10));
+  await page.getByRole("button", { name: "Analyze match →" }).click();
+  await expect(
+    page.getByRole("heading", { name: "What to change" }),
+  ).toBeVisible();
+  await page.getByLabel("Open the Orbital Pay bullets with on-call").uncheck();
+  await page
+    .getByRole("button", { name: "Create variant, applying 2 edits →" })
+    .click();
+
+  // The variant opens on its changes.
+  await expect(page).not.toHaveURL(editorUrl);
+  await expect(
+    page.getByRole("tab", { name: "Changes · 1", selected: true }),
+  ).toBeVisible();
+  const sent = JSON.stringify(await mockCalls());
+  expect(sent).toContain("Lead the headline with Platform Engineer");
+  expect(sent).not.toContain("Open the Orbital Pay bullets with on-call");
+
+  await page
+    .getByRole("article", { name: "Headline" })
+    .getByRole("button", { name: "Revert" })
+    .click();
+  await expect(page.getByLabel("Headline", { exact: true })).toHaveValue(
+    "Backend engineer",
+  );
+  await expect(page.getByText("All changes reviewed")).toBeVisible();
 });

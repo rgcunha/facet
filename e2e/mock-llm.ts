@@ -1,8 +1,8 @@
 /**
  * An OpenAI-compatible stand-in for the model provider, so e2e tests make no paid calls. It records
  * every request (tests check them for personal data and the model asked for) and answers a review
- * with fixed suggestions; any other request (Apply, Ask, Tighten) gets the CV it was sent, with
- * " (edited)" added to the headline.
+ * or an analysis with fixed answers; any other request (tailoring, Apply, Ask, Tighten) gets the CV it
+ * was sent, with " (edited)" added to the headline.
  * It reports a cost per model like OpenRouter does.
  * GET /calls lists the recorded requests. POST /reset clears them and sets how the next calls end:
  * `failing` (an API error) or `invalid` (an answer that doesn't fit the schema).
@@ -32,6 +32,21 @@ const SUGGESTIONS = {
   ],
 };
 
+const ANALYSIS = {
+  title: "Platform Engineer",
+  company: "Halden",
+  language: "en",
+  yearsRequired: 3,
+  requirements: [{ name: "Kubernetes", synonyms: [], priority: "must" }],
+  strengths: ["Payments platform work"],
+  gaps: [{ name: "Helm", why: "Kubernetes deployments usually involve it." }],
+  missing: [],
+  suggestions: [
+    "Lead the headline with Platform Engineer",
+    "Open the Orbital Pay bullets with on-call",
+  ],
+};
+
 let calls: unknown[] = [];
 let failing = false;
 let invalid = false;
@@ -44,12 +59,14 @@ type Call = {
 };
 
 /**
- * A review's schema asks for suggestions; anything else edits the CV, so send that CV back, edited.
- * Relies on the prompts ending with "CV (JSON):\n\n" and the CV (review.ts, revise.ts).
+ * Told apart by the schema asked for: an analysis (gaps) or a review (suggestions). Anything else
+ * (tailoring, Apply, Ask, Tighten) edits the CV, so send that CV back, edited.
+ * Relies on the prompts ending with "CV (JSON):\n\n" and the CV (tailor.ts, review.ts, revise.ts).
  */
 function answer(call: Call) {
-  if (JSON.stringify(call.response_format).includes('"suggestions"'))
-    return JSON.stringify(SUGGESTIONS);
+  const schema = JSON.stringify(call.response_format);
+  if (schema.includes('"gaps"')) return JSON.stringify(ANALYSIS);
+  if (schema.includes('"suggestions"')) return JSON.stringify(SUGGESTIONS);
   const cv = JSON.parse(
     call.messages.at(-1)!.content.split("CV (JSON):\n\n")[1],
   );

@@ -1,16 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { createContext, use } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import {
-  entryKey,
   keepChange,
   NO_CHANGES,
   orderKey,
+  parseChangeKey,
   revertAll,
   revertChange,
 } from "@/lib/cv/changes";
-import { entryValues, joinFilled, plural } from "@/lib/cv/format";
+import { entryName, joinFilled, plural } from "@/lib/cv/format";
 import type { EditorValues, Job, ListSection, Run } from "@/lib/cv/schema";
 import { RunInfo } from "@/components/model";
 
@@ -34,7 +34,7 @@ export function useChanges() {
       );
       setValue("changes", result.changes);
     },
-    /** Accepts the change: it stops being highlighted. */
+    /** Accepts the change: it stops being tracked. */
     keep: (key: string) =>
       setValue("changes", keepChange(getValues("changes"), key)),
     revertAll() {
@@ -48,39 +48,39 @@ export function useChanges() {
   };
 }
 
-/** One tracked change: a highlighted note with Revert and Keep. */
-function ChangeRow({
+/** Opens the Changes tab, at one change's card when given its key. */
+export const ShowChange = createContext<(key?: string) => void>(() => {});
+
+/** Marks a changed spot in the form; it opens the change's card, where it is kept or reverted. */
+export function ChangedBadge({
   changeKey,
-  label,
-  revertLabel = "Revert",
-  children,
+  label = "Changed",
 }: {
   changeKey: string;
-  label: string;
-  revertLabel?: string;
-  children?: ReactNode;
+  label?: string;
 }) {
-  const { revert, keep } = useChanges();
+  const show = use(ShowChange);
   return (
-    <div className="flex flex-col gap-1 rounded-md bg-accent-soft px-3 py-1.5 text-[13px]">
-      <div className="flex flex-wrap items-center gap-2">
-        <strong className="text-accent-strong">{label}</strong>
-        <span className="flex min-w-0 flex-1 gap-1">{children}</span>
-        <button
-          type="button"
-          className="btn-link min-h-8 text-sm"
-          onClick={() => revert(changeKey)}
-        >
-          {revertLabel}
-        </button>
-        <button
-          type="button"
-          className="btn-link min-h-8 text-sm text-muted"
-          onClick={() => keep(changeKey)}
-        >
-          Keep
-        </button>
-      </div>
+    <button
+      type="button"
+      className="min-h-8 shrink-0 rounded bg-accent-soft px-2 text-[13px] font-semibold text-accent-strong hover:bg-accent hover:text-white"
+      onClick={(e) => {
+        e.preventDefault(); // inside an entry's <summary>, don't fold it
+        show(changeKey);
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Under the headline or the summary, when the model changed it. */
+export function FieldChange({ field }: { field: "headline" | "summary" }) {
+  const { original } = useChanges();
+  if (!(field in original)) return null;
+  return (
+    <div className="-mt-1.5">
+      <ChangedBadge changeKey={field} label="Changed: review it" />
     </div>
   );
 }
@@ -93,7 +93,8 @@ export function ChangesBanner({
   /** The last model call that changed this CV (changes can add up over several). */
   run: Run | null;
 }) {
-  const { count, revertAll, keepAll } = useChanges();
+  const { count, flags } = useChanges();
+  const show = use(ShowChange);
   if (!count) return null;
   return (
     <div
@@ -107,8 +108,14 @@ export function ChangesBanner({
             : "Edited by the model"}
           :
         </strong>{" "}
-        {plural(count, "change")}, highlighted below. Edit anything, or revert
-        or keep each change.
+        {plural(count, "change")} to review.
+        {flags.length > 0 && (
+          <strong className="text-warn">
+            {" "}
+            {plural(flags.length, "change adds", "changes add")} something that
+            isn’t in your base CV: check before you export.
+          </strong>
+        )}
         {run && (
           <>
             {" "}
@@ -119,99 +126,15 @@ export function ChangesBanner({
       <button
         type="button"
         className="btn-secondary min-h-9"
-        onClick={revertAll}
+        onClick={() => show()}
       >
-        Revert all
-      </button>
-      <button type="button" className="btn-link min-h-9" onClick={keepAll}>
-        Keep all
+        Review changes
       </button>
     </div>
   );
 }
 
-/** Facts the model added that the base CV doesn't contain. Shown only when there are some. */
-export function FabricationWarnings() {
-  const { flags, revert, keep } = useChanges();
-  if (!flags.length) return null;
-  return (
-    <div
-      role="alert"
-      className="flex flex-col gap-2 rounded-lg border border-warn bg-warn-soft px-4 py-3 text-sm text-warn"
-    >
-      {flags.map((f) => (
-        <div key={f.key} className="flex flex-wrap items-center gap-2">
-          <span className="flex-1">
-            <strong>Not in your base CV:</strong> {f.facts.join(", ")}. Keep it
-            only if it’s true.
-          </span>
-          <button
-            type="button"
-            className="btn-link min-h-8 text-sm"
-            onClick={() => revert(f.key)}
-          >
-            Revert
-          </button>
-          <button
-            type="button"
-            className="btn-link min-h-8 text-sm text-muted"
-            onClick={() => keep(f.key)}
-          >
-            Keep
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** "Was: …" under the headline or the summary. */
-export function FieldChange({ field }: { field: "headline" | "summary" }) {
-  const { original } = useChanges();
-  if (!(field in original)) return null;
-  return (
-    <ChangeRow changeKey={field} label="Changed">
-      <span className="truncate text-muted">
-        Was:{" "}
-        <span className="line-through">
-          {String(original[field]) || "(empty)"}
-        </span>
-      </span>
-    </ChangeRow>
-  );
-}
-
-/** Inside a changed or added entry: what it was, with Revert / Keep. */
-export function EntryChange({
-  section,
-  id,
-}: {
-  section: ListSection;
-  id: string;
-}) {
-  const { original } = useChanges();
-  const key = entryKey(section, id);
-  if (!(key in original)) return null;
-  const previous = original[key];
-  if (previous === null)
-    return <ChangeRow changeKey={key} label="Added" revertLabel="Remove" />;
-  return (
-    <ChangeRow changeKey={key} label="Changed">
-      <details className="min-w-0">
-        <summary className="cursor-pointer text-muted">
-          Show what it was
-        </summary>
-        <ul className="mt-1 list-disc pl-5 text-subtle">
-          {entryValues(previous as object).map((line, i) => (
-            <li key={i}>{line}</li>
-          ))}
-        </ul>
-      </details>
-    </ChangeRow>
-  );
-}
-
-/** Entries the change removed, and whether the order changed, for one section. */
+/** At the end of a section: entries the model removed, and whether it reordered them. */
 export function SectionChanges({
   section,
   currentIds,
@@ -220,36 +143,28 @@ export function SectionChanges({
   currentIds: string[];
 }) {
   const { original } = useChanges();
-  const removed = Object.entries(original).filter(
-    ([key, value]) =>
-      key.startsWith(`${section}.`) &&
-      key !== orderKey(section) &&
+  const removed = Object.entries(original).filter(([key, value]) => {
+    const { field, id } = parseChangeKey(key);
+    return (
+      field === section &&
+      id !== "order" &&
       value !== null &&
-      !currentIds.includes(key.slice(section.length + 1)),
-  );
+      !currentIds.includes(id)
+    );
+  });
+  if (!removed.length && !(orderKey(section) in original)) return null;
   return (
-    <>
+    <div className="flex flex-wrap gap-2">
       {orderKey(section) in original && (
-        <ChangeRow
-          changeKey={orderKey(section)}
-          label="Reordered"
-          revertLabel="Restore order"
-        />
+        <ChangedBadge changeKey={orderKey(section)} label="Reordered" />
       )}
       {removed.map(([key, value]) => (
-        <ChangeRow
+        <ChangedBadge
           key={key}
           changeKey={key}
-          label="Removed:"
-          revertLabel="Restore"
-        >
-          <span className="truncate line-through">
-            {entryValues(value as object)
-              .slice(0, 3)
-              .join(" · ")}
-          </span>
-        </ChangeRow>
+          label={`Removed: ${entryName(value as Record<string, unknown>) || "an entry"}`}
+        />
       ))}
-    </>
+    </div>
   );
 }

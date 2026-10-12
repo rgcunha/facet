@@ -2,7 +2,7 @@
 
 > **Superseded in one respect:** contact details and the PII vault are now stored per CV (`contact` and `vault` in `cvs/<id>.json`), not in a shared `profile.json`. Where this plan says `Profile` or `profile.json`, see `docs/architecture.md` for the current design.
 
-## Current status (2026-10-09)
+## Current status (2026-10-12)
 
 - **Phase 1:** done and committed.
 - **Phase 2 (import):** done.
@@ -23,6 +23,7 @@
 - **Phase 6 (review):** done (2026-10-07). `/simplify` and `/code-review` applied; the 9 review findings included two privacy leaks in instruction scanning (a name opening the instruction, names with inner capitals), a name excused by a longer one in the CV, new numbers lost on an already-flagged entry, the user's own numbers flagged, applying a review of an older version of the CV, and digits in names like S3. `bun test` passes 63 tests; review → apply → own instruction ran against the real model with a made-up CV, and in headless Firefox on a base CV and a variant.
 - **Phase 7 (choose the model, see the cost):** done (2026-10-08). The OpenRouter check confirmed that `usage.cost` comes back by default and that `provider: { zdr: true }` is enforced (a model without zero-retention endpoints is refused with a 404). `/simplify` and `/code-review` applied; the review findings were: a broken `LLM_MODELS` blocked the editor even for manual editing, the README still described `LLM_MODEL`, model ids from the browser weren't validated with zod, and the banner credited every change to the last run. `bun test` passes 71 tests and `bun run e2e` 6; every picker and result was checked in Playwright screenshots against the mock model. Mockups: the v5 row.
 - **Phase 8 (a review you control):** done (2026-10-10). `/simplify` and `/code-review` applied; the 9 review findings included to-dos that were counted but not shown (an entry id the CV doesn't have, or an entry deleted since: now moved to their section when saved, and shown under the whole CV), the panel's list not following Done in the form, quick Done clicks or a to-do save racing an autosave (writes to one CV are now queued, and Done removes one to-do by value), a failed Done hiding the to-do, and Review running with unsaved checklist edits. `bun test` passes 80 tests and `bun run e2e` 10; the start screen, checklist editing, the two result sections, Go to field and the to-do line were checked in Playwright screenshots. Mockups: the v6 row.
+- **Phase 9 (tailoring you choose, changes you approve):** built (2026-10-12). `bun test` passes 87 tests and `bun run e2e` 13; the Tailor panel and the Changes tab were checked in Playwright screenshots. Mockups: the v7 row.
 
 ## Context
 
@@ -579,6 +580,40 @@ Seven phases: Phase 0 (mockups) is done, and Phases 1–6 are the build. Each bu
 - **`CLAUDE.md`:** the review checklist is user-editable and stored in `data/checklist.json`; the safety rules stay in code.
 
 **PDF export rendered on the server (added after use, 2026-10-11).** ✅ Done. Export went through the browser's print dialog: an extra tab, and its paper size, margins and headers could add a page the preview didn't show. Now **Export PDF** (editor) and **PDF** (library) download the file straight away: `/cv/[id]/pdf` prints the print view in headless Chromium (`playwright`, now a dependency; the browser is the one the e2e tests already install) with the CSS page size, and names it `First-Last_Company.pdf`. Text stays real text, for ATS. Without Chromium the button says to run `bunx playwright install chromium`. E2e: an edit made just before Export is in the downloaded file, which is one A4 page with the name and headline as text.
+
+**Phase 9: Tailoring you choose, changes you approve.** ✅ Built (2026-10-12). Mockups: v7 "Tailor panel: pick what changes" and "Variant: the Changes tab".
+
+- **Why:** from using the tool. The match report and its suggestions work well, but tailoring then rewrote the whole CV however the model liked: reordering, rephrasing and dropping well beyond the suggestions you'd read. Most of those changes got reverted, one by one, by finding each in the form and opening "Show what it was". That's the costly path, and it's the most common one. Two fixes: the model changes only what you ticked, and every change is judged in one list with a clear before → after. This lifts "per-change accept/reject UI" from the out-of-scope list.
+- **Flow:** **Tailor to a job…** → paste → **Analyze** → the match report, then **What to change**, a list of checkboxes → **Create variant, applying N edits** → the variant opens on the **Changes** tab → **Keep** or **Revert** each change (or all of them) → the tab says "All changes reviewed" and the preview takes over.
+- **What to change** (in the Tailor panel, under the report; it replaces the separate gaps list and the Language and Length selects):
+  - **Suggestions:** one checkbox per match-report suggestion, ticked by default (as in Review).
+  - **Skills you have:** the gaps, unticked by default as today. "Tick only what's true."
+  - **Put the most relevant first:** reorder entries, bullets and skills. Ticked by default.
+  - **Fit to [1 page ▾]:** shorten or drop the least relevant bullets until it fits. Unticked by default; when unticked, nothing is dropped.
+  - **Translate into [language ▾]:** shown only when the posting's language differs from the CV's. Unticked by default.
+  - With nothing ticked, the button reads **Create variant without changes**: a copy for this job, with its match report.
+- **AI:** `tailorCv` stops being "adapt the CV" and becomes "apply these edits and nothing else", with `reviseCv`'s discipline: change only what an edit asks for, never drop an entry or bullet unless "Fit" is ticked, keep the order unless "Put the most relevant first" is ticked, and keep ids, placeholders, emphasis and the no-new-facts rule. It returns only the CV: the job's title and company come from the analysis, which now also names the company and the posting's language. Input: `{ suggestions: string[], confirmed: string[], reorder: boolean, fit: 1 | 2 | null, language: string | null }`. The prompt lists only the ticked edits.
+- **The Changes tab** (in the preview pane, beside Preview, Base CV and Match report; on every CV with changes, not only variants):
+  - Header: "N changes to review" with **Keep all** and **Revert all**.
+  - One card per tracked change (the existing `changes.original` keys, so Review's Apply, Ask and Tighten feed it too). Card heading: where it is ("Summary", "Experience · Orbital Pay", "Skills · order"), then the change:
+    - changed text: a **word-level diff**, removed words struck through and muted, added words in the accent's soft fill. In an entry, one line per changed field or bullet; unchanged bullets are left out ("2 bullets unchanged").
+    - added entry: all of it as added. Removed entry: all of it struck through. Reordered: old and new order side by side, the moved items marked.
+    - a translated change: before and after one under the other, without the word highlight (every word differs).
+  - A possible fabrication shows on its card in the warning style ("Not in your base CV: 3 teams. Keep it only if it's true.") instead of in a separate banner.
+  - **Keep** and **Revert** on each card are the existing `keepChange` / `revertChange`; the card leaves the list, and the form and preview update. When the last card goes: "All changes reviewed." and a link back to Preview.
+  - **In the form:** a changed field keeps its highlight and a **Changed** badge; the badge opens its card in the Changes tab. The inline "Was / Revert / Keep" rows (`ChangeRow`, `FieldChange`, `EntryChange`, `SectionChanges`) and `FabricationWarnings` go away: one place to decide.
+  - **When it opens:** a new variant opens on the Changes tab. After Apply, Ask or Tighten the panel stays where it is (Phase 8); the banner's **Review changes** button closes the panel and opens the tab.
+- **Banner:** "Variant for Platform Engineer, Halden Freight: 5 changes to review. Last run: … " with **Review changes**; Revert all and Keep all move into the tab.
+- **Schema / data:** nothing stored changes. `changes.original` and `flags` are as today, so existing variants open in the new tab as they are. `tailorInputSchema` gets `suggestions`, `reorder`, `fit` and `language` in place of `pages` and the free language; `suggestions` must be among the report's, like `confirmed` among its gaps. The variant's `pages` is `fit ?? the base's`.
+- **Code:**
+  - `lib/cv/diff.ts`: `diffWords(before, after)` → `{ text, kind: "same" | "added" | "removed" }[]`, a small LCS over words (no dependency; CVs are short). Also `describeChange(key, original, content)` → the card's heading and lines, used by the tab.
+  - `components/editor/ChangesTab.tsx` replaces most of `changes.tsx`; `useChanges` stays.
+- **Out of scope:** keeping or reverting one bullet inside a changed entry (a change is still one entry, as today: revert and redo the bullet by hand, or ask for it), the model saying which suggestion caused each change, a history of rejected changes, regenerating a single change.
+- **Tests:**
+  - Unit: `diffWords` (insert, delete, replace, same text, empty); `describeChange` for changed, added, removed and reordered entries; the tailor prompt contains only the ticked edits and says to keep the order and every bullet when those aren't ticked; `tailorAction` drops suggestions that aren't in the report; the privacy test still passes for `tailorCv`.
+  - E2e: untick a suggestion and tailor → the mock's request lacks it; the variant opens on Changes with one card per change; Revert one → the form shows the old text and the card is gone; Keep all → "All changes reviewed"; after a Review Apply, **Review changes** opens the tab. No contact detail reaches the mock.
+- **Diagrams:** add `diffWords`, `describeChange` and `ChangesTab`; `TailorCv` takes the chosen edits; `TailorPanel` gets What to change; remove the inline change rows.
+- **`CLAUDE.md`:** remove "per-change accept/reject UI" from Out of scope; "Tailoring … record previous values in `changes.original` so fields can be reverted" adds "and reviewed one by one in the Changes tab"; tailoring applies only the edits the user ticked.
 
 **Every phase ends with the Definition of done in `CLAUDE.md`:** `bun run check` + `bun test` pass → `/simplify` → `/code-review` → diagrams up to date → UI tried in the browser.
 

@@ -6,8 +6,11 @@ import { RunInfo } from "@/components/model";
 import type { Analysis, CvView, EditorValues, Run } from "@/lib/cv/schema";
 import { type MatchScore, scoreCv } from "@/lib/match/score";
 
+/** What the report shows: an analysis, fresh in the Tailor panel or stored on a variant. */
+type Report = Omit<Analysis, "company" | "language">;
+
 /** The score of what is in the form now, recomputed as the user edits. */
-function useLiveScore(report: Analysis) {
+function useLiveScore(report: Report) {
   const values = useDeferredValue(useWatch<EditorValues>() as EditorValues);
   return useMemo(() => scoreCv(values, report), [values, report]);
 }
@@ -15,7 +18,7 @@ function useLiveScore(report: Analysis) {
 /** A variant's base CV scored against the variant's job: the "before" of before → after. */
 export function useBaseScore(
   base: CvView | undefined,
-  report: Analysis | undefined,
+  report: Report | undefined,
 ) {
   return useMemo(
     () => (base && report ? scoreCv(base, report) : undefined),
@@ -48,7 +51,7 @@ export function LiveScoreChange({
   report,
   before,
 }: {
-  report: Analysis;
+  report: Report;
   before?: MatchScore;
 }) {
   return <ScoreChange before={before} score={useLiveScore(report)} />;
@@ -85,19 +88,20 @@ function List({ title, items }: { title: string; items: string[] }) {
 
 /**
  * The match report: the live score and its parts, strengths, gaps, missing skills and suggestions.
- * With `onToggle` (Tailor panel) the gaps are checkboxes; without it (a variant) the confirmed ones
- * are listed.
+ * In the Tailor panel (`choosing`) the gaps and suggestions are choices under the report, so it
+ * leaves them out; on a variant it lists the confirmed skills and the suggestions.
  */
 export function MatchReport({
   report,
-  confirmed,
-  onToggle,
+  confirmed = [],
+  choosing = false,
   before,
   run,
 }: {
-  report: Analysis;
-  confirmed: string[];
-  onToggle?: (name: string) => void;
+  report: Report;
+  /** On a variant: the skills the user confirmed. */
+  confirmed?: string[];
+  choosing?: boolean;
   /** The base CV's score, on a variant. */
   before?: MatchScore;
   /** The model call that wrote the report, in the Tailor panel. */
@@ -172,35 +176,7 @@ export function MatchReport({
       <div className="flex flex-col gap-5 p-5">
         <List title="Strengths" items={report.strengths} />
 
-        {onToggle && report.gaps.length > 0 && (
-          <fieldset className="flex flex-col gap-2">
-            <legend className="font-bold">
-              You may have these, but your CV doesn’t show them
-            </legend>
-            <p className="text-[13px] text-muted">
-              Tick only what’s true. Tailoring adds the ticked ones and nothing
-              else.
-            </p>
-            {report.gaps.map((g) => (
-              <label
-                key={g.name}
-                className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-line px-3 py-2.5"
-              >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 size-5 accent-accent"
-                  checked={confirmed.includes(g.name)}
-                  onChange={() => onToggle(g.name)}
-                />
-                <span className="flex flex-col">
-                  <span className="font-semibold">{g.name}</span>
-                  <span className="text-[13px] text-muted">{g.why}</span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-        )}
-        {!onToggle && confirmed.length > 0 && (
+        {confirmed.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <h4 className="font-bold">You confirmed</h4>
             <Chips items={confirmed} />
@@ -218,7 +194,7 @@ export function MatchReport({
           </div>
         )}
 
-        <List title="Suggestions" items={report.suggestions} />
+        {!choosing && <List title="Suggestions" items={report.suggestions} />}
       </div>
     </section>
   );

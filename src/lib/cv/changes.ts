@@ -8,7 +8,7 @@ import {
 
 /** What was there before each change, keyed as described on `changesSchema`. */
 type Original = Changes["original"];
-type Entry = { id: string } & Record<string, unknown>;
+export type Entry = { id: string } & Record<string, unknown>;
 type Field = "headline" | "summary" | ListSection;
 
 export const entryKey = (section: ListSection, id: string) =>
@@ -16,11 +16,16 @@ export const entryKey = (section: ListSection, id: string) =>
 export const orderKey = (section: ListSection) => `${section}.order`;
 export const NO_CHANGES: Changes = { original: {}, flags: [] };
 
-const same = (a: unknown, b: unknown) =>
+export const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 const entries = (content: CvContent, section: ListSection) =>
   content[section] as Entry[];
-const fieldOf = (key: string) => key.split(".")[0] as Field;
+
+/** Splits a change key into the field it touches and, for a list section, the entry id or "order". */
+export function parseChangeKey(key: string): { field: Field; id: string } {
+  const field = key.split(".")[0] as Field;
+  return { field, id: key.slice(field.length + 1) };
+}
 
 /** Whether an entry was added or changed (or neither), for its badge in the editor. */
 export function changeKind(
@@ -214,8 +219,7 @@ export function revertChange(
   key: string,
 ): { content: CvContent; field: Field; changes: Changes } {
   const previous = changes.original[key];
-  const field = fieldOf(key);
-  const id = key.slice(field.length + 1);
+  const { field, id } = parseChangeKey(key);
   const remaining = keepChange(changes, key);
   if (field === "headline" || field === "summary")
     return {
@@ -244,7 +248,9 @@ export function revertChange(
 /** Undoes every change: entries first, then their order. */
 export function revertAll(content: CvContent, changes: Changes): CvContent {
   const keys = Object.keys(changes.original).sort(
-    (a, b) => Number(a.endsWith(".order")) - Number(b.endsWith(".order")),
+    (a, b) =>
+      Number(parseChangeKey(a).id === "order") -
+      Number(parseChangeKey(b).id === "order"),
   );
   return keys.reduce(
     (state, key) => revertChange(state.content, state.changes, key),

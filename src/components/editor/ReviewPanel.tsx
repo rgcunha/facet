@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useWatch } from "react-hook-form";
 import { type ReviseRequest, reviewAction } from "@/app/actions";
 import { ModelPicker, RunInfo, useModel } from "@/components/model";
-import { joinFilled, plural, SECTION_TITLES } from "@/lib/cv/format";
+import { entryName, plural, SECTION_TITLES, toggled } from "@/lib/cv/format";
 import type {
   ChecklistRule,
   CvContent,
@@ -121,9 +121,7 @@ export function ReviewPanel({
     setResult(
       result && {
         ...result,
-        unticked: unticked.includes(i)
-          ? unticked.filter((n) => n !== i)
-          : [...unticked, i],
+        unticked: toggled(unticked, i),
       },
     );
   const reviewButton = (label: string, primary: boolean) => (
@@ -439,14 +437,6 @@ const AREA_LABELS: Record<Suggestion["area"], string> = {
   ...SECTION_TITLES,
   whole: "Whole CV",
 };
-
-/** What an entry is called in a heading: its employer, school, project, group or section title. */
-const entryName = (entry: Record<string, unknown>) =>
-  joinFilled(
-    ["company", "institution", "name", "group", "title"].map((key) =>
-      String(entry[key] ?? ""),
-    ),
-  );
 
 /** Labelled here, from the entry id the model returned, so headings always match the form. */
 function sectionLabel(content: CvContent, { area, entryId }: Todo) {

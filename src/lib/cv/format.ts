@@ -23,11 +23,19 @@ export const fold = (s: string) =>
 export const normalize = (s: string) =>
   s.trim().toLowerCase().replace(/\s+/g, " ");
 
-/** Every non-empty text in a list entry (its id excluded), e.g. to show what an entry was. */
+/** Every non-empty text in a list entry (its id excluded), e.g. to show a whole entry that was added or removed. */
 export const entryValues = (entry: object) =>
   filled(
     Object.entries(entry).flatMap(([key, value]) =>
       key === "id" ? [] : ([value].flat() as string[]),
+    ),
+  );
+
+/** What an entry is called in a heading: its employer, school, project, group or section title. */
+export const entryName = (entry: Record<string, unknown>) =>
+  joinFilled(
+    ["company", "institution", "name", "group", "title"].map((key) =>
+      String(entry[key] ?? ""),
     ),
   );
 
@@ -39,6 +47,10 @@ export const visible = <T extends object>(entries: T[]) =>
 
 export const plural = (n: number, word: string, many = `${word}s`) =>
   `${n} ${n === 1 ? word : many}`;
+
+/** The list with `item` added, or removed if it was there: a ticked or unticked checkbox. */
+export const toggled = <T>(list: T[], item: T) =>
+  list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
 
 export const digits = (s: string) => s.replace(/\D/g, "");
 

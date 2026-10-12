@@ -11,7 +11,7 @@ import { generateStructured } from "./generate";
 import { reviewCv } from "./review";
 import { applyInstruction, reviseCv } from "./revise";
 import { structureCv } from "./structure";
-import { tailorCv } from "./tailor";
+import { chosenEdits, hasEdits, tailorCv, type TailorEdits } from "./tailor";
 
 const privateValues: PrivateValue[] = [
   { kind: "name", value: "Alex Moreno" },
@@ -165,25 +165,22 @@ test("tailoring masks the vault everywhere (job text included) and keeps known e
     ],
   };
   const model = recordingModel({
-    content: {
-      ...base,
-      headline: "Platform Engineer",
-      experience: [
-        { ...base.experience[0], id: "a1b2c3d4" },
-        { ...base.experience[0], id: "a1b2c3d4", company: "Duplicate id" },
-        { ...base.experience[0], id: "made-up", company: "Invented id" },
-      ],
-      projects: [
-        { id: "p0000001", name: "Ledger", link: "{{URL}}", description: "" },
-      ],
-    },
-    job: { title: "Platform Engineer", company: "Halden", language: "en" },
+    ...base,
+    headline: "Platform Engineer",
+    experience: [
+      { ...base.experience[0], id: "a1b2c3d4" },
+      { ...base.experience[0], id: "a1b2c3d4", company: "Duplicate id" },
+      { ...base.experience[0], id: "made-up", company: "Invented id" },
+    ],
+    projects: [
+      { id: "p0000001", name: "Ledger", link: "{{URL}}", description: "" },
+    ],
   });
 
   const result = await tailorCv(
     base,
     "We are hiring. Referrals to Alex Moreno at alex.moreno@example.com.",
-    { language: "", pages: 1, report: { confirmed: [], suggestions: [] } },
+    { ...NO_EDITS, reorder: true },
     privateValues,
     model,
   );
@@ -212,15 +209,12 @@ test("a CV's own contact and vault are masked in tailoring, without being passed
       summary: "Sam Rivera built payments at Orbital Pay Ltd.",
     },
   };
-  const model = recordingModel({
-    content: cv.content,
-    job: { title: "Engineer", company: "Halden", language: "en" },
-  });
+  const model = recordingModel(cv.content);
 
   await tailorCv(
     cv.content,
     "Contact sam.rivera@example.org about this role. ".repeat(5),
-    { language: "", pages: 1, report: { confirmed: [], suggestions: [] } },
+    { ...NO_EDITS, reorder: true },
     privateValuesOf(cv),
     model,
   );
@@ -256,6 +250,8 @@ test("analysis masks the CV's private values and returns the report", async () =
   };
   const answer = {
     title: "Platform Engineer",
+    company: "Halden",
+    language: "en",
     yearsRequired: 5,
     requirements: [
       { name: "Kubernetes", synonyms: ["k8s"], priority: "must" },
@@ -281,28 +277,56 @@ test("analysis masks the CV's private values and returns the report", async () =
   expect(report.suggestions[0]).toBe("Lead with Alex Moreno's Kubernetes work");
 });
 
-test("tailoring tells the model which skills the user confirmed", async () => {
-  const model = recordingModel({
-    content: emptyContent(),
-    job: { title: "", company: "", language: "en" },
-  });
+const NO_EDITS = {
+  suggestions: [],
+  confirmed: [],
+  reorder: false,
+  fit: null,
+  translate: null,
+} satisfies TailorEdits;
+
+test("tailoring sends only the edits the user ticked", async () => {
+  const model = recordingModel(emptyContent());
   await tailorCv(
     emptyContent(),
     "Job text",
     {
-      language: "",
-      pages: 1,
-      report: {
-        confirmed: ["Helm"],
-        suggestions: ["Use Platform in the headline"],
-      },
+      ...NO_EDITS,
+      suggestions: ["Use Platform in the headline"],
+      confirmed: ["Helm"],
     },
     [],
     model,
   );
   const sent = JSON.stringify(model.doGenerateCalls);
-  expect(sent).toContain("Skills the candidate confirmed having: Helm.");
   expect(sent).toContain("- Use Platform in the headline");
+  expect(sent).toContain(
+    "confirmed having, to the skills and where they fit: Helm.",
+  );
+  // Unticked: no reordering, shortening or translating is asked for, and the rules forbid them.
+  expect(sent).not.toContain("most relevant to this job first");
+  expect(sent).not.toContain("Shorten the CV");
+  expect(sent).not.toContain("Translate everything");
+  expect(sent).toContain(
+    "Keep the order of entries, bullet points and skills, unless",
+  );
+  expect(sent).toContain("Never drop an entry or bullet point, unless");
+});
+
+test("tailoring drops ticked suggestions and skills that aren't in the report sent with them", () => {
+  const report = {
+    suggestions: ["Lead with Kubernetes"],
+    gaps: [{ name: "Helm", why: "" }],
+  };
+  const edits = chosenEdits(report, {
+    ...NO_EDITS,
+    suggestions: ["Lead with Kubernetes", "Say you led 10 teams"],
+    confirmed: ["Helm", "Rust"],
+  });
+  expect(edits.suggestions).toEqual(["Lead with Kubernetes"]);
+  expect(edits.confirmed).toEqual(["Helm"]);
+  expect(hasEdits(NO_EDITS)).toBe(false);
+  expect(hasEdits({ ...NO_EDITS, fit: 1 })).toBe(true);
 });
 
 test("a review masks the CV's private values and passes on the job's keywords", async () => {

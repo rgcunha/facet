@@ -20,7 +20,8 @@ import {
 } from "@/app/actions";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { RunInfo, useModel } from "@/components/model";
-import { ChangesBanner, FabricationWarnings, FieldChange } from "./changes";
+import { ChangesBanner, FieldChange, ShowChange } from "./changes";
+import { changeCardId } from "./ChangesTab";
 import {
   Card,
   CommaListField,
@@ -30,7 +31,7 @@ import {
   TextField,
 } from "./fields";
 import { LiveScoreChange, MatchReport, useBaseScore } from "./MatchReport";
-import { Preview } from "./Preview";
+import { Preview, type PreviewTab } from "./Preview";
 import { ReviewPanel } from "./ReviewPanel";
 import { TailorPanel } from "./TailorPanel";
 import { TodoSpot, TodosContext } from "./todos";
@@ -51,6 +52,7 @@ const statusText: Record<SaveStatus, string> = {
 
 export function Editor({
   id,
+  language,
   defaultValues,
   sourceUrl,
   justImported = false,
@@ -62,6 +64,8 @@ export function Editor({
   todos: savedTodos,
 }: {
   id: string;
+  /** ISO 639-1 code of the CV's language. */
+  language: string;
   defaultValues: EditorValues;
   /** The original PDF, for CVs created by import. */
   sourceUrl?: string;
@@ -86,6 +90,24 @@ export function Editor({
   // preview keeps its work, and a review still running.
   const [opened, setOpened] = useState({ review: false, tailor: openTailor });
   const [running, setRunning] = useState({ review: false, tailor: false });
+  // A new variant (or any CV the model changed) opens on its changes, so they are judged first.
+  const [tab, setTab] = useState<PreviewTab>(
+    justImported && sourceUrl
+      ? "second"
+      : Object.keys(defaultValues.changes.original).length
+        ? "changes"
+        : "preview",
+  );
+  const showChange = (key?: string) => {
+    setPanel(null);
+    setTab("changes");
+    if (key)
+      requestAnimationFrame(() => {
+        const card = document.getElementById(changeCardId(key));
+        card?.scrollIntoView({ behavior: "smooth", block: "center" });
+        card?.focus({ preventScroll: true });
+      });
+  };
   const [reviseError, setReviseError] = useState<string>();
   const [revising, startRevise] = useTransition();
   const { status, flush, load } = useAutosave(form, id);
@@ -165,319 +187,330 @@ export function Editor({
 
   return (
     <FormProvider {...form}>
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-[1392px] flex-wrap items-center gap-x-5 gap-y-3 px-6 py-2.5">
-          <Link href="/" className="btn-link font-semibold">
-            ← CVs
-          </Link>
-          <label className="min-w-0 flex-[1_1_240px]">
-            <span className="sr-only">CV name</span>
-            <input
-              className="w-full bg-transparent py-1 text-lg font-bold"
-              placeholder="CV name"
-              {...form.register("title")}
-              disabled={revising}
+      <ShowChange value={showChange}>
+        <header className="border-b border-line bg-white">
+          <div className="mx-auto flex max-w-[1392px] flex-wrap items-center gap-x-5 gap-y-3 px-6 py-2.5">
+            <Link href="/" className="btn-link font-semibold">
+              ← CVs
+            </Link>
+            <label className="min-w-0 flex-[1_1_240px]">
+              <span className="sr-only">CV name</span>
+              <input
+                className="w-full bg-transparent py-1 text-lg font-bold"
+                placeholder="CV name"
+                {...form.register("title")}
+                disabled={revising}
+              />
+            </label>
+            {job?.report && (
+              <span className="flex items-center gap-2 text-sm">
+                <span className="text-[13px] text-muted">Match</span>
+                <LiveScoreChange report={job.report} before={baseScore} />
+              </span>
+            )}
+            <span
+              role="status"
+              className={`text-[13px] ${status === "error" ? "text-danger" : "text-muted"}`}
+            >
+              {statusText[status]}
+            </span>
+            <label className="flex items-center gap-2 text-[13px] text-muted">
+              Length
+              <select
+                className="input w-auto"
+                {...form.register("pages", { valueAsNumber: true })}
+                disabled={revising}
+              >
+                <option value={1}>1 page</option>
+                <option value={2}>2 pages</option>
+              </select>
+            </label>
+            {panelButton("review", "Review…")}
+            {panelButton("tailor", "Tailor to a job…")}
+            <ExportPdfButton
+              id={id}
+              label="Export PDF"
+              className="btn-primary"
+              saveFirst={flush}
+              disabled={revising} // saving now would make the model's edit fail
             />
-          </label>
-          {job?.report && (
-            <span className="flex items-center gap-2 text-sm">
-              <span className="text-[13px] text-muted">Match</span>
-              <LiveScoreChange report={job.report} before={baseScore} />
-            </span>
-          )}
-          <span
-            role="status"
-            className={`text-[13px] ${status === "error" ? "text-danger" : "text-muted"}`}
-          >
-            {statusText[status]}
-          </span>
-          <label className="flex items-center gap-2 text-[13px] text-muted">
-            Length
-            <select
-              className="input w-auto"
-              {...form.register("pages", { valueAsNumber: true })}
-              disabled={revising}
-            >
-              <option value={1}>1 page</option>
-              <option value={2}>2 pages</option>
-            </select>
-          </label>
-          {panelButton("review", "Review…")}
-          {panelButton("tailor", "Tailor to a job…")}
-          <ExportPdfButton
-            id={id}
-            label="Export PDF"
-            className="btn-primary"
-            saveFirst={flush}
-            disabled={revising} // saving now would make the model's edit fail
-          />
-        </div>
-      </header>
-
-      {showImportBanner && (
-        <div className="mx-auto max-w-[1392px] px-6 pt-4">
-          <div
-            role="status"
-            className="flex flex-wrap items-center gap-4 rounded-lg bg-accent/10 px-4 py-3 text-sm"
-          >
-            <span className="flex-[1_1_400px]">
-              <strong>Parsed</strong>
-              {lastRun && (
-                <>
-                  {" "}
-                  by <RunInfo run={lastRun} />
-                </>
-              )}
-              . Compare with your original on the right and fix anything that
-              landed in the wrong place. Then <strong>Review</strong> it before
-              you tailor it to jobs.
-            </span>
-            <button
-              type="button"
-              className="btn-link min-h-9"
-              onClick={() => setShowImportBanner(false)}
-            >
-              Got it
-            </button>
           </div>
-        </div>
-      )}
+        </header>
 
-      <div className="mx-auto flex max-w-[1392px] flex-col gap-2.5 px-6 pt-4 empty:hidden">
-        <ChangesBanner job={job} run={lastRun} />
-        {todos.length > 0 && (
-          <p
-            role="status"
-            className="rounded-lg border border-line bg-white px-4 py-2 text-sm"
-          >
-            <strong>
-              {plural(todos.length, "thing needs", "things need")} your input
-            </strong>
-            , marked in the form.
-          </p>
-        )}
-        <FabricationWarnings />
-        {reviseError && (
-          <p
-            role="alert"
-            className="rounded-lg border border-danger bg-white px-4 py-3 text-sm text-danger"
-          >
-            {reviseError}
-          </p>
-        )}
-      </div>
-
-      <main className="mx-auto flex max-w-[1392px] flex-wrap items-start gap-6 px-6 pt-4 pb-12">
-        <TodosContext value={{ todos, done: doneTodo }}>
-          <form
-            aria-label="CV content"
-            className="min-w-0 flex-[1_1_520px]"
-            onSubmit={(e) => e.preventDefault()}
-          >
-            {/* Locked while the model edits the CV: its result replaces the content, so edits made meanwhile would be lost. */}
-            <fieldset
-              disabled={revising}
-              className="flex min-w-0 flex-col gap-3.5 disabled:opacity-60"
+        {showImportBanner && (
+          <div className="mx-auto max-w-[1392px] px-6 pt-4">
+            <div
+              role="status"
+              className="flex flex-wrap items-center gap-4 rounded-lg bg-accent/10 px-4 py-3 text-sm"
             >
-              <TodoSpot area="whole" />
-              <Card title="Contact">
-                <Grid>
-                  <TextField name="contact.name" label="Full name" />
-                  <TextField name="contact.email" label="Email" />
-                  <TextField name="contact.phone" label="Phone" />
-                  <TextField name="contact.location" label="Location" />
-                  <TextField
-                    name="contact.dateOfBirth"
-                    label="Date of birth (optional)"
-                  />
-                </Grid>
-                <StringListField
-                  name="contact.links"
-                  label="Links"
-                  addLabel="Add link"
-                />
-              </Card>
-
-              <Card title="Headline & summary">
-                <TodoSpot area="headline">
-                  <TextField name="content.headline" label="Headline" />
-                  <FieldChange field="headline" />
-                </TodoSpot>
-                <TodoSpot area="summary">
-                  <TextField name="content.summary" label="Summary" rows={4} />
-                  <FieldChange field="summary" />
-                </TodoSpot>
-              </Card>
-
-              <ItemList
-                section="experience"
-                title={SECTION_TITLES.experience}
-                addLabel="Add role"
-                summary={(e) =>
-                  joinFilled([e.role, e.company, range(e.start, e.end)])
-                }
-              >
-                {(p) => (
+              <span className="flex-[1_1_400px]">
+                <strong>Parsed</strong>
+                {lastRun && (
                   <>
-                    <Grid>
-                      <TextField name={`${p}.role`} label="Role" />
-                      <TextField name={`${p}.company`} label="Company" />
-                      <TextField name={`${p}.location`} label="Location" />
-                      <TextField name={`${p}.start`} label="Start" />
-                      <TextField name={`${p}.end`} label="End" />
-                    </Grid>
-                    <StringListField
-                      name={`${p}.highlights`}
-                      label="Highlights"
-                      hint="**bold** and *italic* work."
-                      addLabel="Add highlight"
-                    />
+                    {" "}
+                    by <RunInfo run={lastRun} />
                   </>
                 )}
-              </ItemList>
-
-              <ItemList
-                section="education"
-                title={SECTION_TITLES.education}
-                addLabel="Add education"
-                summary={(e) => joinFilled([e.degree, e.institution])}
+                . Compare with your original on the right and fix anything that
+                landed in the wrong place. Then <strong>Review</strong> it
+                before you tailor it to jobs.
+              </span>
+              <button
+                type="button"
+                className="btn-link min-h-9"
+                onClick={() => setShowImportBanner(false)}
               >
-                {(p) => (
-                  <>
-                    <Grid>
-                      <TextField name={`${p}.degree`} label="Degree" />
-                      <TextField
-                        name={`${p}.institution`}
-                        label="Institution"
-                      />
-                      <TextField name={`${p}.location`} label="Location" />
-                      <TextField name={`${p}.start`} label="Start" />
-                      <TextField name={`${p}.end`} label="End" />
-                    </Grid>
-                    <TextField name={`${p}.details`} label="Details" rows={2} />
-                  </>
-                )}
-              </ItemList>
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
 
-              <ItemList
-                section="skills"
-                title={SECTION_TITLES.skills}
-                addLabel="Add group"
-                summary={(s) => s.group}
-              >
-                {(p) => (
-                  <>
-                    <TextField name={`${p}.group`} label="Group" />
-                    <CommaListField
-                      name={`${p}.items`}
-                      label="Skills (comma-separated)"
-                    />
-                  </>
-                )}
-              </ItemList>
+        <div className="mx-auto flex max-w-[1392px] flex-col gap-2.5 px-6 pt-4 empty:hidden">
+          <ChangesBanner job={job} run={lastRun} />
+          {todos.length > 0 && (
+            <p
+              role="status"
+              className="rounded-lg border border-line bg-white px-4 py-2 text-sm"
+            >
+              <strong>
+                {plural(todos.length, "thing needs", "things need")} your input
+              </strong>
+              , marked in the form.
+            </p>
+          )}
+          {reviseError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-danger bg-white px-4 py-3 text-sm text-danger"
+            >
+              {reviseError}
+            </p>
+          )}
+        </div>
 
-              <ItemList
-                section="projects"
-                title={SECTION_TITLES.projects}
-                addLabel="Add project"
-                summary={(x) => x.name}
+        <main className="mx-auto flex max-w-[1392px] flex-wrap items-start gap-6 px-6 pt-4 pb-12">
+          <TodosContext value={{ todos, done: doneTodo }}>
+            <form
+              aria-label="CV content"
+              className="min-w-0 flex-[1_1_520px]"
+              onSubmit={(e) => e.preventDefault()}
+            >
+              {/* Locked while the model edits the CV: its result replaces the content, so edits made meanwhile would be lost. */}
+              <fieldset
+                disabled={revising}
+                className="flex min-w-0 flex-col gap-3.5 disabled:opacity-60"
               >
-                {(p) => (
-                  <>
-                    <Grid>
-                      <TextField name={`${p}.name`} label="Name" />
-                      <TextField name={`${p}.link`} label="Link" />
-                    </Grid>
-                    <TextField
-                      name={`${p}.description`}
-                      label="Description"
-                      rows={2}
-                    />
-                  </>
-                )}
-              </ItemList>
-
-              <ItemList
-                section="languages"
-                title={SECTION_TITLES.languages}
-                addLabel="Add language"
-                summary={(l) => joinFilled([l.name, l.level])}
-              >
-                {(p) => (
+                <TodoSpot area="whole" />
+                <Card title="Contact">
                   <Grid>
-                    <TextField name={`${p}.name`} label="Language" />
-                    <TextField name={`${p}.level`} label="Level" />
-                  </Grid>
-                )}
-              </ItemList>
-
-              <ItemList
-                section="extras"
-                title={SECTION_TITLES.extras}
-                addLabel="Add section"
-                summary={(x) => x.title}
-              >
-                {(p) => (
-                  <>
-                    <TextField name={`${p}.title`} label="Section title" />
-                    <StringListField
-                      name={`${p}.items`}
-                      label="Entries"
-                      addLabel="Add entry"
-                      hint="**bold** and *italic* work."
+                    <TextField name="contact.name" label="Full name" />
+                    <TextField name="contact.email" label="Email" />
+                    <TextField name="contact.phone" label="Phone" />
+                    <TextField name="contact.location" label="Location" />
+                    <TextField
+                      name="contact.dateOfBirth"
+                      label="Date of birth (optional)"
                     />
-                  </>
-                )}
-              </ItemList>
-            </fieldset>
-          </form>
-        </TodosContext>
+                  </Grid>
+                  <StringListField
+                    name="contact.links"
+                    label="Links"
+                    addLabel="Add link"
+                  />
+                </Card>
 
-        {opened.tailor && (
-          <Activity mode={panel === "tailor" ? "visible" : "hidden"}>
-            <TailorPanel
-              cvId={id}
-              onClose={closePanel}
-              saveFirst={flush}
-              track={track("tailor")}
+                <Card title="Headline & summary">
+                  <TodoSpot area="headline">
+                    <TextField name="content.headline" label="Headline" />
+                    <FieldChange field="headline" />
+                  </TodoSpot>
+                  <TodoSpot area="summary">
+                    <TextField
+                      name="content.summary"
+                      label="Summary"
+                      rows={4}
+                    />
+                    <FieldChange field="summary" />
+                  </TodoSpot>
+                </Card>
+
+                <ItemList
+                  section="experience"
+                  title={SECTION_TITLES.experience}
+                  addLabel="Add role"
+                  summary={(e) =>
+                    joinFilled([e.role, e.company, range(e.start, e.end)])
+                  }
+                >
+                  {(p) => (
+                    <>
+                      <Grid>
+                        <TextField name={`${p}.role`} label="Role" />
+                        <TextField name={`${p}.company`} label="Company" />
+                        <TextField name={`${p}.location`} label="Location" />
+                        <TextField name={`${p}.start`} label="Start" />
+                        <TextField name={`${p}.end`} label="End" />
+                      </Grid>
+                      <StringListField
+                        name={`${p}.highlights`}
+                        label="Highlights"
+                        hint="**bold** and *italic* work."
+                        addLabel="Add highlight"
+                      />
+                    </>
+                  )}
+                </ItemList>
+
+                <ItemList
+                  section="education"
+                  title={SECTION_TITLES.education}
+                  addLabel="Add education"
+                  summary={(e) => joinFilled([e.degree, e.institution])}
+                >
+                  {(p) => (
+                    <>
+                      <Grid>
+                        <TextField name={`${p}.degree`} label="Degree" />
+                        <TextField
+                          name={`${p}.institution`}
+                          label="Institution"
+                        />
+                        <TextField name={`${p}.location`} label="Location" />
+                        <TextField name={`${p}.start`} label="Start" />
+                        <TextField name={`${p}.end`} label="End" />
+                      </Grid>
+                      <TextField
+                        name={`${p}.details`}
+                        label="Details"
+                        rows={2}
+                      />
+                    </>
+                  )}
+                </ItemList>
+
+                <ItemList
+                  section="skills"
+                  title={SECTION_TITLES.skills}
+                  addLabel="Add group"
+                  summary={(s) => s.group}
+                >
+                  {(p) => (
+                    <>
+                      <TextField name={`${p}.group`} label="Group" />
+                      <CommaListField
+                        name={`${p}.items`}
+                        label="Skills (comma-separated)"
+                      />
+                    </>
+                  )}
+                </ItemList>
+
+                <ItemList
+                  section="projects"
+                  title={SECTION_TITLES.projects}
+                  addLabel="Add project"
+                  summary={(x) => x.name}
+                >
+                  {(p) => (
+                    <>
+                      <Grid>
+                        <TextField name={`${p}.name`} label="Name" />
+                        <TextField name={`${p}.link`} label="Link" />
+                      </Grid>
+                      <TextField
+                        name={`${p}.description`}
+                        label="Description"
+                        rows={2}
+                      />
+                    </>
+                  )}
+                </ItemList>
+
+                <ItemList
+                  section="languages"
+                  title={SECTION_TITLES.languages}
+                  addLabel="Add language"
+                  summary={(l) => joinFilled([l.name, l.level])}
+                >
+                  {(p) => (
+                    <Grid>
+                      <TextField name={`${p}.name`} label="Language" />
+                      <TextField name={`${p}.level`} label="Level" />
+                    </Grid>
+                  )}
+                </ItemList>
+
+                <ItemList
+                  section="extras"
+                  title={SECTION_TITLES.extras}
+                  addLabel="Add section"
+                  summary={(x) => x.title}
+                >
+                  {(p) => (
+                    <>
+                      <TextField name={`${p}.title`} label="Section title" />
+                      <StringListField
+                        name={`${p}.items`}
+                        label="Entries"
+                        addLabel="Add entry"
+                        hint="**bold** and *italic* work."
+                      />
+                    </>
+                  )}
+                </ItemList>
+              </fieldset>
+            </form>
+          </TodosContext>
+
+          {opened.tailor && (
+            <Activity mode={panel === "tailor" ? "visible" : "hidden"}>
+              <TailorPanel
+                cvId={id}
+                cvLanguage={language}
+                onClose={closePanel}
+                saveFirst={flush}
+                track={track("tailor")}
+              />
+            </Activity>
+          )}
+          {opened.review && (
+            <Activity mode={panel === "review" ? "visible" : "hidden"}>
+              <ReviewPanel
+                cvId={id}
+                variant={!!job}
+                rules={checklist}
+                todos={todos}
+                onTodos={setTodos}
+                onClose={closePanel}
+                saveFirst={flush}
+                track={track("review")}
+                revise={revise}
+                revising={revising}
+              />
+            </Activity>
+          )}
+          <Activity mode={panel ? "hidden" : "visible"}>
+            <Preview
+              sourceUrl={sourceUrl}
+              base={base}
+              report={
+                job?.report && (
+                  <MatchReport
+                    report={job.report}
+                    confirmed={job.report.confirmed}
+                    before={baseScore}
+                  />
+                )
+              }
+              tab={tab}
+              onTab={setTab}
+              onTighten={(overflowLines) => revise({ tighten: overflowLines })}
+              tightening={revising}
             />
           </Activity>
-        )}
-        {opened.review && (
-          <Activity mode={panel === "review" ? "visible" : "hidden"}>
-            <ReviewPanel
-              cvId={id}
-              variant={!!job}
-              rules={checklist}
-              todos={todos}
-              onTodos={setTodos}
-              onClose={closePanel}
-              saveFirst={flush}
-              track={track("review")}
-              revise={revise}
-              revising={revising}
-            />
-          </Activity>
-        )}
-        <Activity mode={panel ? "hidden" : "visible"}>
-          <Preview
-            sourceUrl={sourceUrl}
-            base={base}
-            report={
-              job?.report && (
-                <MatchReport
-                  report={job.report}
-                  confirmed={job.report.confirmed}
-                  before={baseScore}
-                />
-              )
-            }
-            showSecond={justImported}
-            onTighten={(overflowLines) => revise({ tighten: overflowLines })}
-            tightening={revising}
-          />
-        </Activity>
-      </main>
+        </main>
+      </ShowChange>
     </FormProvider>
   );
 }

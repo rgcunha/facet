@@ -77,12 +77,13 @@ classDiagram
   }
   class Job {
     <<schema>>
-    +title, company, url, text, language
+    +title, company, url, text
     +report: MatchReport or null
   }
   class Analysis {
     <<schema>>
-    +title: string
+    +title, company: string
+    +language: ISO 639-1 code of the posting
     +yearsRequired: number or null
     +requirements: Requirement[]
     +strengths, missing, suggestions: string[]
@@ -90,7 +91,7 @@ classDiagram
   }
   class MatchReport {
     <<schema>>
-    Analysis plus
+    Analysis without company and language, plus
     +confirmed: string[]
     +createdAt: datetime
   }
@@ -276,8 +277,9 @@ classDiagram
   }
   class TailorPanel {
     <<component>>
-    job text, fetch, language, length
-    Analyze, confirm gaps, Create variant
+    job text, fetch, Analyze
+    What to change: suggestions, skills you have, most relevant first, fit, translate
+    Create variant, applying N edits
   }
   class ReviewPanel {
     <<component>>
@@ -302,9 +304,14 @@ classDiagram
   }
   class ChangeControls {
     <<component>>
-    useChanges, ChangeRow, ChangesBanner
-    FabricationWarnings
-    FieldChange, EntryChange, SectionChanges
+    useChanges, ChangesBanner (Review changes)
+    ShowChange: opens the Changes tab at a card
+    ChangedBadge, FieldChange, SectionChanges
+  }
+  class ChangesTab {
+    <<component>>
+    one card per change: word diff, flag, Keep, Revert
+    Keep all, Revert all, All changes reviewed
   }
   class Fields {
     <<component>>
@@ -314,7 +321,8 @@ classDiagram
   class Preview {
     <<component>>
     page-fit indicator, Tighten to fit
-    Preview / Original PDF or Base CV / Match report tabs
+    Preview / Original PDF or Base CV / Match report / Changes tabs
+    tab chosen by the Editor
   }
   class Templates {
     <<component>>
@@ -342,7 +350,7 @@ classDiagram
     +parseImportAction(importId, masked)
     +cancelImportAction(importId)
     +analyzeAction(cvId, jobText)
-    +tailorAction(cvId, job, report, confirmed)
+    +tailorAction(cvId, job, report, chosen edits) no model call when none
     +reviewAction(cvId)
     +reviseAction(cvId, tighten or suggestions or instruction, masks)
     +fetchJobAction(url)
@@ -356,6 +364,14 @@ classDiagram
     +keepChange(changes, key)
     +revertAll(content, changes)
     +changeKind(original, section, id)
+    +parseChangeKey(key) field, id
+  }
+  class ChangeDiff {
+    <<module>>
+    +diffWords(before, after) parts
+    lists compared item by item, rewrites paired by likeness
+    +describeChange(key, previous, content) where, note, lines
+    +changeOrder(keys)
   }
   class JobFetcher {
     <<module>>
@@ -403,7 +419,10 @@ classDiagram
   }
   class TailorCv {
     <<module>>
-    +tailorCv(content, jobText, options with report, privateValues, model) content, job, run
+    +tailorEditsSchema
+    +tailorCv(content, jobText, edits, privateValues, model) content, run
+    +chosenEdits(report, edits) only the report's suggestions and gaps
+    +hasEdits(edits)
   }
   class MatchScore {
     <<module>>
@@ -583,14 +602,19 @@ classDiagram
   ReviewCv --> DefaultChecklist
   ReviseCv --> DefaultChecklist
   ReviewPanel --> PiiDetector : detectInText, in the browser
-  ReviewPanel --> Format : SECTION_TITLES
+  ReviewPanel --> Format : SECTION_TITLES, entryName
   PiiDetector --> Format : cvText
   Changes --> Format : cvText, digits
-  Fields --> ChangeControls : entry and section notes
+  Fields --> ChangeControls : Changed badges
+  Preview --> ChangesTab
+  ChangesTab --> ChangeControls : useChanges
+  ChangesTab --> ChangeDiff
+  ChangeDiff --> Format : entryName, entryValues, plural, SECTION_TITLES
+  ChangeDiff --> Changes : parseChangeKey, same
   ChangeControls --> Changes : revert, keep
   Fields --> Changes : changeKind
   TailorPanel --> ServerActions : analyzeAction, tailorAction, fetchJobAction
-  TailorPanel --> MatchReportView : with gap checkboxes
+  TailorPanel --> MatchReportView : choosing, gaps and suggestions below it
   Editor --> MatchReportView : score in header, report tab
   MatchReportView --> MatchScore : live, in the browser
   MatchScore --> Parsability
@@ -668,7 +692,7 @@ classDiagram
   3. **Cancel import** discards the draft and its PDF. Leftovers from imports that were never parsed (e.g. the tab was closed) are discarded at the next upload, so unmasked CV text doesn't pile up in `data/imports/`.
 - **Tailoring starts with a match report.**
   - `analyzeAction` sends the CV content and the job text, masked like tailoring, and returns the report: the job's requirements (must or nice, with synonyms), title and years asked, plus strengths, gaps (skills the CV suggests but doesn't show), missing skills and suggestions. It isn't saved; it lives in the Tailor panel until a variant is created from it.
-  - The user ticks the gaps that are true. `tailorAction` passes the report and those confirmed skills to `tailorCv`, stores the report (with `confirmed` and `createdAt`) on the variant's `Job`, and `recordChanges` passes the confirmed skills to `findFabrications` as `knownSkills`, so they aren't flagged.
+  - Under the report, **What to change** lists the edits the variant may get: the report's suggestions (ticked by default), the gaps the user confirms having (unticked), "put the most relevant first" (ticked), "fit to N pages" and, when the posting's language differs from the CV's, "translate" (both unticked). `tailorAction` drops ticked suggestions and gaps that aren't in the report sent with them (`chosenEdits`, input hygiene: both come from the browser) and passes them to `tailorCv`, whose prompt applies those edits and nothing else: no reordering, dropping or translating unless ticked. With nothing ticked no model is called and the variant is a copy for this job. The job's title and company come from the report, so tailoring returns only the CV. The report (with `confirmed` and `createdAt`) is stored on the variant's `Job`, and `recordChanges` passes the confirmed skills to `findFabrications` as `knownSkills`, so they aren't flagged.
   - **The score is computed locally** (`MatchScore.scoreCv`, no model call), so it updates as the user edits: requirements found as whole words (or a synonym) in the CV text, title match, years of experience (overlapping roles counted once) and four ATS readability checks (`Parsability`). Weights: must-haves 50, title 20, nice-to-haves 15, readability 10, years 5; parts that don't apply are left out. A variant shows its base CV's score → its own.
 - **Tailoring creates a variant.**
   - `tailorAction` sends the CV content (never `Contact`) and the job text. Both are masked with that CV's private values (`privateValuesOf`), so personal details in a pasted posting are masked too. The variant copies the CV's contact and vault.
@@ -676,6 +700,7 @@ classDiagram
   - `recordChanges` records every change (`diffContent`) and flags new facts (employers, roles, dates, degrees, skills) that appear neither in the base CV nor in what the user had before this round, so anything they kept stays kept (`findFabrications`). That check is done locally, not by the model.
   - When the variant is in another language than its base, only language-neutral facts are checked: employers, schools, dates, links and skills. The import step detects each CV's language for this.
   - Revert and Keep (`revertChange`, `keepChange`) update the changes and their flags together.
+  - **Every change is judged in the Changes tab** (beside Preview), which a CV with changes opens on. One card per `changes.original` key, in CV order (`changeOrder`), shows a word-level diff (`diffWords`; old text then new when they share too little, e.g. a translation), bullets compared as a list (unchanged ones counted, a rewrite paired with the old bullet it's most like), and the fabrication flag on its card. The form only marks changed spots with a badge that opens their card (`ShowChange`). Tailoring, Apply, Ask and Tighten all land here; the banner's **Review changes** opens the tab.
 - **Review, Apply, Ask for something else and "Tighten to fit" edit a CV in place**, all through `reviseAction` → `reviseCv` with a different instruction: the ticked suggestions (`applyInstruction`), the user's own text, or "remove about N words" (`tightenInstruction`).
   - `reviewAction` runs when the user clicks Review (the panel opens on the checklist and the Model picker) and returns `Suggestion`s, judged against the user's checklist (`data/checklist.json`, or `DEFAULT_CHECKLIST`; `cvPractice` states it in the prompt, shared with `reviseCv`) read for the candidate's field. Each suggestion names the rule it comes from; the output schema allows only the checklist's names. The safety rules (`NO_NEW_FACTS_RULE`, placeholders, ids, terms to keep) stay in code. Impact without a number counts; numbers are never invented.
   - The suggestions only the user can act on (`kind: "yours"`) replace the CV's `todos` (`saveTodos`, which keeps `updatedAt`: it stands for content changes). `placeTodos` moves a to-do whose entry the CV doesn't have to its section; in the form, one whose entry was deleted since shows under the whole CV (`hasPlace`). They show as notes until marked done (`doneTodoAction` → `removeTodo`, by value). Writes to one CV are queued, so a to-do save and an autosave can't overwrite each other. Saving the checklist refreshes the page, so the saved list is passed back down.
