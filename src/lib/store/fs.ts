@@ -5,10 +5,11 @@ import { cvIdSchema } from "@/lib/cv/schema";
 
 /** Read at call time so tests (and users) can point DATA_DIR elsewhere. */
 export function dataPath(...segments: string[]) {
-  return path.join(
-    process.env.DATA_DIR ?? path.join(process.cwd(), "data"),
-    ...segments,
-  );
+  // The data folder (the user's CVs) is never part of the build, so keep it out of the trace.
+  const root =
+    process.env.DATA_DIR ??
+    path.join(/*turbopackIgnore: true*/ process.cwd(), "data");
+  return path.join(/*turbopackIgnore: true*/ root, ...segments);
 }
 
 /** Rejects anything that is not a plain id, so a URL can never point outside the data folder. */
