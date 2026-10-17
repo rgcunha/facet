@@ -22,7 +22,7 @@ export async function fetchJobText(url: string): Promise<string> {
 
   const response = await fetch(parsed, {
     signal: AbortSignal.timeout(TIMEOUT_MS),
-    headers: { "User-Agent": "Mozilla/5.0 (CV Tool; job description fetch)" },
+    headers: { "User-Agent": "Mozilla/5.0 (Facet; job description fetch)" },
   }).catch(() => null);
   if (!response?.ok)
     throw new Error(`Couldn't load that page. ${PASTE_INSTEAD}`);

@@ -37,7 +37,7 @@ const plex = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "CV Tool",
+  title: "Facet",
   description: "Keep a base CV and tailored variants for each job.",
 };
 

@@ -37,7 +37,7 @@ export function ModelsProvider({
  * localStorage once, then kept in memory, because localStorage can be unavailable (private windows,
  * blocked site data).
  */
-const KEY = "cv-tool.model";
+const KEY = "facet.model";
 const listeners = new Set<() => void>();
 let chosen: string | null | undefined; // undefined: not read yet
 

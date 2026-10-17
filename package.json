@@ -1,5 +1,5 @@
 {
-  "name": "cv-tool",
+  "name": "facet",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,6 +9,8 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "e2e": "playwright test",
+    "package:mac": "bash scripts/mac/package.sh",
+    "release:mac": "bash scripts/mac/release.sh",
     "check": "next typegen && tsc --noEmit && eslint && prettier --check . && knip && jscpd src"
   },
   "dependencies": {

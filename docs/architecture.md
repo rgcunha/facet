@@ -384,7 +384,7 @@ classDiagram
   }
   class PdfRenderer {
     <<module>>
-    +renderPdf(url) headless Chromium
+    +renderPdf(url) headless Chromium, else Chrome
   }
   class PiiDetector {
     <<module>>
@@ -708,7 +708,7 @@ classDiagram
   - The user's instruction is scanned in the browser (`detectInText`): emails, links, phones, and capitalised word pairs that look like a person's name and aren't in the CV. Those are masked by default ("Send as written" unmasks one) and passed as extra private values for that request only; they aren't saved.
   - `reviseAction` returns the new content and changes; the editor loads them into the form (`useAutosave().load`, which doesn't save it again) instead of remounting, so the panels stay where they were (Ask clears for the next request; Apply shows how many fixes it made). The page keys the editor by CV id only.
   - The editor is locked while the model edits, and the action only writes if the CV wasn't saved in the meantime, so no edit is lost. Changes are merged with earlier ones (the earliest version wins), so Revert always goes back to what you had, and `findFabrications` flags new facts and numbers.
-- **PDF export is rendered on the server.** `ExportPdfButton` saves pending edits, then fetches `/cv/[id]/pdf`; `PdfRenderer` opens `/cv/[id]/print` in headless Chromium (Playwright) and prints it with the `@page` size and margins from `PageGeometry`, the same template and engine as the preview. The file downloads as `First-Last_Company.pdf`; a failure (e.g. Chromium not installed) is shown under the button.
+- **PDF export is rendered on the server.** `ExportPdfButton` saves pending edits, then fetches `/cv/[id]/pdf`; `PdfRenderer` opens `/cv/[id]/print` in headless Chromium (Playwright's own, or else the user's Google Chrome, which is all the macOS bundle has) and prints it with the `@page` size and margins from `PageGeometry`, the same template and engine as the preview. The file downloads as `First-Last_Company.pdf`; a failure (e.g. Chromium not installed) is shown under the button.
 - **Job pages are fetched best-effort** (`JobFetcher`: Readability + linkedom). Pasting the text is the main way in.
 - **Pages read data on the server** via the stores; **every write goes through `ServerActions`**, which validate their input with zod. Client components never touch the file system.
 - **Only `lib/store/*` uses `node:fs`.** Every file (JSON and PDF) is written atomically through `FileStore.writeFileAtomic`, and JSON is validated on every read. Ids from URLs are checked with `isSafeId`, so a URL can't reach outside `DATA_DIR`.

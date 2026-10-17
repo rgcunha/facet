@@ -1,10 +1,26 @@
-# CV Tool
+# Facet
 
 Keep a base CV and tailored variants for each job you apply to, and export them to PDF. It runs locally; your data stays in a folder on your machine.
 
 Status: all three phases are built: editing and PDF export, PDF import, and tailoring to job offers. See [docs/plan.md](docs/plan.md).
 
-## Setup
+## Install on a Mac
+
+Open **Terminal** (press ⌘-Space, type "Terminal", press Return), paste this line and press Return:
+
+```bash
+curl -fsSL https://github.com/rgcunha/facet/releases/latest/download/install.sh | bash
+```
+
+It asks for your OpenRouter key once, then opens Facet in your browser. After that, open **Facet** from Applications or Spotlight. No admin rights are needed. Exporting PDFs uses Google Chrome, so install it if you don't have it.
+
+- **Update:** run the same line again. Your CVs and key are kept.
+- **Your data** is in `~/Library/Application Support/Facet` (`data/` holds your CVs, `.env` your key). Back up that folder to keep them.
+- **Uninstall:** delete `Facet` from `~/Applications` and the folder above.
+
+To publish a new version for Mac users, commit, then run `bun run release:mac` (needs the [GitHub CLI](https://cli.github.com), logged in).
+
+## Setup (from source)
 
 Requires [Bun](https://bun.sh) (and Node.js, which Next.js runs on).
 
@@ -55,7 +71,7 @@ Variants are listed under their base CV. Deleting a base CV deletes its variants
 
 ## Export to PDF
 
-**Export PDF** opens a print view and the browser's print dialog. Choose **Save as PDF**. The file name is filled in as `Your-Name_CV-Title`. In Chrome, untick "Headers and footers" if it's on.
+**Export PDF** downloads the CV as a PDF, named `Your-Name_CV-Title`. It's printed on your computer by Chromium (`bunx playwright install chromium`) or, if that isn't installed, by Google Chrome.
 
 ## Development
 

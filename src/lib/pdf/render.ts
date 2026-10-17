@@ -5,11 +5,10 @@ import { chromium } from "playwright";
  * the file matches what the editor shows. The page's `@page` CSS sets the paper size and margins.
  */
 export async function renderPdf(url: URL) {
-  const browser = await chromium.launch().catch((error: unknown) => {
+  const browser = await launch().catch((error: unknown) => {
     throw new Error(
-      error instanceof Error &&
-        error.message.includes("Executable doesn't exist")
-        ? "The PDF renderer isn't installed. Run `bunx playwright install chromium`, then export again."
+      isMissing(error)
+        ? "The PDF renderer isn't installed. Install Google Chrome, or run `bunx playwright install chromium`, then export again."
         : "The PDF renderer couldn't start.",
       { cause: error },
     );
@@ -27,3 +26,14 @@ export async function renderPdf(url: URL) {
     await browser.close();
   }
 }
+
+/** Playwright's own Chromium if it was installed, else the user's Google Chrome (the macOS bundle ships neither). */
+const launch = () =>
+  chromium.launch().catch((error: unknown) => {
+    if (!isMissing(error)) throw error;
+    return chromium.launch({ channel: "chrome" });
+  });
+
+const isMissing = (error: unknown) =>
+  error instanceof Error &&
+  /Executable doesn't exist|distribution '.+' is not found/.test(error.message);

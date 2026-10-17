@@ -16,7 +16,7 @@ import {
 import { createImport, discardAllImports, getImport } from "./imports";
 import { getSourcePdf } from "./sources";
 
-const root = await mkdtemp(path.join(tmpdir(), "cv-tool-"));
+const root = await mkdtemp(path.join(tmpdir(), "facet-"));
 let dir: string;
 
 beforeEach(async () => {

@@ -15,7 +15,7 @@ Object.assign(process.env, {
   LLM_MODELS: "mock-fast $ Mock Fast, mock-good $$$ Mock Good",
   LLM_API_KEY: "mock",
 });
-process.env.DATA_DIR ??= mkdtempSync(path.join(os.tmpdir(), "cv-tool-e2e-"));
+process.env.DATA_DIR ??= mkdtempSync(path.join(os.tmpdir(), "facet-e2e-"));
 
 export default defineConfig({
   testDir: "e2e",

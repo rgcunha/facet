@@ -1,13 +1,13 @@
 @AGENTS.md
 
-# CV Tool
+# Facet
 
 A local web app for keeping one or more **base CVs** and many **variants** tailored to specific job offers.
 
 1. **Import & edit**: drop a CV PDF → parse it into structured fields → fix it in a form (original PDF alongside) → export to PDF.
 2. **Tailor**: from a CV, paste a job description (a URL is optional) → a variant opens in the editor with the changes highlighted → edit → export.
 
-Personal tool: 1 user, at most 3–4 people, **each running their own copy**. No auth, no hosting, no multi-tenancy.
+Personal tool: 1 user, at most 3–4 people, **each running their own copy**. No auth, no hosting, no multi-tenancy. People who don't code install it on a Mac with one Terminal line (`scripts/mac/install.sh`), which needs no admin rights and no developer tools.
 
 - Plan: `docs/plan.md` (copied in Phase 1 from `~/.claude/plans/fuzzy-questing-melody.md`)
 - UI mockups (v2 row is current): https://claude.ai/artifact/BLt5UVRZijW8LjVAkXmEf5
@@ -25,6 +25,7 @@ Available once Phase 1 sets up the project:
 - `bun run dev`: start the app on localhost (PDF export needs Chromium once: `bunx playwright install chromium`)
 - `bun test`: unit tests (Bun's built-in runner, `*.test.ts` next to the module)
 - `bun run e2e`: browser tests (Playwright, `e2e/*.e2e.ts`). They build the app and run it on port 3100 against a temp `DATA_DIR` and a local mock model (`e2e/mock-llm.ts`), so they never make a paid call and run beside `bun run dev`. One-time setup: `bunx playwright install chromium`.
+- `bun run package:mac`: builds `dist/facet-mac.tar.gz` (the standalone server plus Node for both Mac chips) from the files git would commit, so `data/` and `.env` never reach it. `bun run release:mac` publishes it as the latest GitHub release of `rgcunha/facet` (needs `gh`), which `scripts/mac/install.sh` downloads.
 - `bun run check`: `tsc --noEmit` + ESLint + Prettier check + `knip` (unused code/deps) + `jscpd` (duplication). **Must pass before a change is done.**
 
 ## Privacy rules (non-negotiable)

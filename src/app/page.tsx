@@ -29,7 +29,7 @@ export default async function LibraryPage() {
           <span className="flex size-[30px] items-center justify-center rounded-lg bg-ink text-sm text-white">
             CV
           </span>
-          CV Tool
+          Facet
         </div>
       </header>
 

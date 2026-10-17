@@ -45,3 +45,6 @@ next-env.d.ts
 # local CV data (personal)
 /data
 !.env.example
+
+# macOS bundle (scripts/mac/package.sh)
+/dist
